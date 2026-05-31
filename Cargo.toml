@@ -1,0 +1,42 @@
+[package]
+name = "md2pdf"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Render Markdown to PDF with correct color-emoji rendering."
+authors = ["md2pdf contributors"]
+repository = "https://github.com/eshork/md2pdf"
+readme = "README.md"
+
+[[bin]]
+name = "md2pdf"
+path = "src/main.rs"
+
+[lib]
+name = "md2pdf"
+path = "src/lib.rs"
+
+# v1 SCAFFOLD per W-1bab5f. The Work spec is explicit: do NOT add image,
+# ureq, rustls, layout-rs, petgraph, svg, or pulldown-cmark yet — those
+# land with their respective feature Work items.
+#
+# Engine choice: hand-rolled `typst::World` (see `src/pipeline/world.rs`)
+# over `typst` + `typst-pdf`. typst-as-lib was surveyed and rejected for
+# v1 — the World surface we need (one in-memory main source, no
+# `@preview` packages) is small enough to maintain in-tree, and avoiding
+# typst-as-lib keeps optional features (reqwest, ureq) out of the dep
+# graph entirely.
+[dependencies]
+clap = { version = "=4.5.20", features = ["derive"] }
+typst = "=0.14.2"
+typst-pdf = "=0.14.2"
+thiserror = "=2.0.18"
+
+[dev-dependencies]
+assert_cmd = "=2.2.2"
+tempfile = "=3.16.0"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
