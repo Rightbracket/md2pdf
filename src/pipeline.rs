@@ -32,7 +32,7 @@ use crate::error::{Md2PdfError, Result};
 use crate::image_pipeline::{Pipeline, PipelineBuilder};
 use crate::pipeline::world::ScaffoldWorld;
 use crate::theme::THEME;
-use crate::warnings::WarningCollector;
+use crate::warnings::{WarningCollector, WarningSource};
 
 /// Inputs to a single render run.
 pub struct RenderRequest<'a> {
@@ -70,18 +70,32 @@ pub fn render(req: &RenderRequest<'_>) -> Result<()> {
     let body = emit_typst_body(&markdown, &mut image_pipeline, &mut mermaid, &mut warnings)
         .map_err(Md2PdfError::from)?;
 
-    // 4. Strict-mode gate. Per D-b53937 §3 we check before write so the
-    //    user gets a clean "no output" signal on warnings + --strict.
-    if req.strict && warnings.any() {
-        return Err(Md2PdfError::StrictEscalation {
-            count: warnings.count(),
-        });
-    }
-
-    // 5. Compose theme + body and compile.
+    // 4. Compose theme + body and compile. Capture compile warnings via
+    //    `Warned<...>` and bridge into the unified collector under
+    //    `WarningSource::TypstCompile` (D-c3af71 §D-3). Stderr line shape:
+    //    `md2pdf: warn: typst-compile: <msg>`.
     let typst_source = format!("{}\n{}\n", THEME, body);
     let world = ScaffoldWorld::new(typst_source);
-    let document = typst::compile(&world)
+    let compiled = typst::compile::<typst::layout::PagedDocument>(&world);
+    for diag in &compiled.warnings {
+        warnings.warn(WarningSource::TypstCompile, diag.message.to_string());
+    }
+
+    // 5. Strict-mode end-of-run gate (D-c3af71 §D). After all warning
+    //    sources have had a chance to fire (image pipeline, mermaid,
+    //    emitter, typst-compile) we ask the unified collector: "did any
+    //    warning fire?" and, if so, emit the canonical summary line and
+    //    return `StrictEscalation` *before* writing the PDF — the user
+    //    gets a clean "no output" signal.
+    if req.strict && warnings.any() {
+        let count = warnings.count();
+        eprintln!(
+            "md2pdf: error: --strict was set and {count} warning(s) escalated to errors"
+        );
+        return Err(Md2PdfError::StrictEscalation { count });
+    }
+
+    let document = compiled
         .output
         .map_err(|errors| Md2PdfError::TypstCompile(format_diags(&errors)))?;
     let pdf_bytes = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())

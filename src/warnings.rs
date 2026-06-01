@@ -51,6 +51,10 @@ pub enum WarningSource {
     /// recoverable parse oddities the emitter chose not to drop on the
     /// floor.
     Emitter,
+    /// Typst compile step (`typst::compile`) emitted a non-fatal
+    /// warning. Bridged from `Warned<...>::warnings` after compile so
+    /// the unified strict-mode gate sees them.
+    TypstCompile,
 }
 
 /// One recorded warning. The collector emits the human-readable form to
@@ -124,6 +128,7 @@ impl WarningCollector {
             WarningSource::Image => format!("md2pdf: warn: {}", message),
             WarningSource::Mermaid => format!("md2pdf: warn: mermaid: {}", message),
             WarningSource::Emitter => format!("md2pdf: warn: {}", message),
+            WarningSource::TypstCompile => format!("md2pdf: warn: typst-compile: {}", message),
         };
         self.sink.write_line(&line);
         self.warnings.push(Warning { source, message });

@@ -24,7 +24,12 @@ fn main() -> ProcessExitCode {
     match render(&req) {
         Ok(()) => ProcessExitCode::from(0),
         Err(e) => {
-            eprintln!("md2pdf: {}", error_message(&e));
+            // For StrictEscalation, the canonical summary line was
+            // already emitted by `pipeline::render` per D-c3af71 §D.
+            // Don't double-print here.
+            if !matches!(e, Md2PdfError::StrictEscalation { .. }) {
+                eprintln!("md2pdf: {}", error_message(&e));
+            }
             ProcessExitCode::from(e.exit_code().as_i32() as u8)
         }
     }
