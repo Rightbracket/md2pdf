@@ -5,6 +5,8 @@
 
 pub mod cli;
 pub mod error;
+pub mod image_pipeline;
 pub mod pipeline;
+pub mod theme;
 
 pub use error::{ExitCode, Md2PdfError};
