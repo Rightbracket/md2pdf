@@ -16,10 +16,6 @@ path = "src/main.rs"
 name = "md2pdf"
 path = "src/lib.rs"
 
-# v1 SCAFFOLD per W-1bab5f. The Work spec is explicit: do NOT add image,
-# ureq, rustls, layout-rs, petgraph, svg, or pulldown-cmark yet — those
-# land with their respective feature Work items.
-#
 # Engine choice: hand-rolled `typst::World` (see `src/pipeline/world.rs`)
 # over `typst` + `typst-pdf`. typst-as-lib was surveyed and rejected for
 # v1 — the World surface we need (one in-memory main source, no
@@ -27,10 +23,22 @@ path = "src/lib.rs"
 # typst-as-lib keeps optional features (reqwest, ureq) out of the dep
 # graph entirely.
 [dependencies]
+# Dependencies for md2pdf v1 are pinned per Decision D-c3af71.
+# See that Decision for parser, image-pipeline, and mermaid choices and rationale.
 clap = { version = "=4.5.20", features = ["derive"] }
 typst = "=0.14.2"
 typst-pdf = "=0.14.2"
+# Bundled default fonts (New Computer Modern, DejaVu Sans Mono, etc.) so
+# the World can actually shape body text. Without this, the World only
+# carries Twemoji (emoji-only) and every Latin glyph falls back to
+# .notdef — Typst still "compiles" but the PDF content stream comes out
+# empty (blank page). Pinned to lock-file version.
+typst-assets = { version = "=0.14.2", features = ["fonts"] }
 thiserror = "=2.0.18"
+pulldown-cmark = { version = "=0.13.0", default-features = false }
+ecow = "=0.3.0"
+petgraph = { version = "=0.6.5", default-features = false, features = ["graphmap"] }
+svg = "=0.18.0"
 
 [dev-dependencies]
 assert_cmd = "=2.2.2"

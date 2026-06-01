@@ -1,0 +1,26 @@
+Twemoji Mozilla — bundled COLRv0 emoji font
+============================================
+
+File: Twemoji.Mozilla.ttf
+Source: https://github.com/mozilla/twemoji-colr (release v0.7.0)
+
+The font binary in this directory is the COLRv0 build produced by the
+Mozilla `twemoji-colr` project. It composes the Twemoji glyph artwork
+(originally created by Twitter, Inc., maintained by the Twemoji project)
+with build tooling under licenses listed below.
+
+Build tooling and font binary
+-----------------------------
+Apache License 2.0
+Copyright Mozilla Foundation
+Full license text: https://www.apache.org/licenses/LICENSE-2.0
+
+Glyph artwork (Twemoji)
+-----------------------
+Creative Commons Attribution 4.0 International (CC-BY 4.0)
+Copyright Twitter, Inc and other contributors
+Full license text: https://creativecommons.org/licenses/by/4.0/
+
+Per D-2058a7, the CC-BY 4.0 attribution surfaces in this file (shipped
+inside the binary via the embedded `assets/` tree) and will surface in
+the future `--license` CLI subcommand once that Work lands.
