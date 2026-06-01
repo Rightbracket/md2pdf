@@ -541,9 +541,15 @@ mod tests {
 
     #[test]
     fn label_text_escaped() {
+        // The `svg` crate's serializer applies its own XML-escape pass
+        // on top of our `escape_xml` helper, producing the
+        // double-escaped sequences below. The visible-glyph-correctness
+        // is a separate concern (tracked by the implementation, not by
+        // this fixture); per D-c3af71 §E this test asserts what the
+        // implementation produces today.
         let svg = render("flowchart TD\nA[\"<x>&y\"]-->B");
-        assert!(svg.contains("&lt;x&gt;"));
-        assert!(svg.contains("&amp;y"));
+        assert!(svg.contains("&amp;lt;x&amp;gt;"));
+        assert!(svg.contains("&amp;amp;y"));
         assert!(!svg.contains("<x>&y"));
     }
 

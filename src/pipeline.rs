@@ -27,7 +27,7 @@ pub(crate) mod world;
 
 use std::path::Path;
 
-use crate::emitter::{emit_typst_body, StubMermaidDispatcher};
+use crate::emitter::{emit_typst_body, RealMermaidDispatcher};
 use crate::error::{Md2PdfError, Result};
 use crate::image_pipeline::{Pipeline, PipelineBuilder};
 use crate::pipeline::world::ScaffoldWorld;
@@ -63,7 +63,7 @@ pub fn render(req: &RenderRequest<'_>) -> Result<()> {
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| std::path::PathBuf::from("."));
     let mut image_pipeline: Pipeline = PipelineBuilder::new(base_dir).build();
-    let mut mermaid = StubMermaidDispatcher;
+    let mut mermaid = RealMermaidDispatcher;
     let mut warnings = WarningCollector::new();
 
     // 3. Emit Typst body from the Markdown source.

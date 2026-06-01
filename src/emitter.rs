@@ -45,16 +45,20 @@ use crate::warnings::{WarningCollector, WarningSource};
 // MermaidDispatcher: API shape + stub.
 // -----------------------------------------------------------------------------
 
-/// Errors a mermaid dispatcher can return. Per D-c3af71 §B the emitter
-/// only needs the `UnsupportedDiagramType` variant for the W#5' stub;
-/// W#6' (the real mermaid wiring) will route the existing
-/// `crate::mermaid::MermaidError` shape through this surface.
+/// Errors a mermaid dispatcher can return. The real dispatcher
+/// (W-ddc4e7) carries the typed `crate::mermaid::MermaidError` into
+/// `Other(String)`; the `UnsupportedDiagramType` variant is preserved
+/// for the legacy stub used by tests that should not touch the real
+/// `crate::mermaid` machinery.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MermaidDispatchError {
     UnsupportedDiagramType,
-    /// Reserved for the real dispatcher (W#6'). Keeps the consumer side
-    /// match exhaustive without re-version-bumping when the real
-    /// wiring lands.
+    /// The real dispatcher routes any `MermaidError` (parse, layout,
+    /// unknown/unsupported diagram type, oversize input) here, with
+    /// `to_string()` as the human reason. Per D-c3af71 §D-2, the
+    /// emitter routes this to a `WarningSource::Mermaid` warning + the
+    /// `md_mermaid_stub(src)` placeholder; never produces an
+    /// `Md2PdfError::*` exit-5 hard error.
     Other(String),
 }
 
@@ -87,15 +91,75 @@ pub trait MermaidDispatcher {
     fn render(&mut self, src: &str) -> Result<MermaidRendered, MermaidDispatchError>;
 }
 
-/// Stub impl per W#5' done-definition bullet 5: returns
-/// `UnsupportedDiagramType` for everything. The emitter turns this into
-/// a `WarningSource::Mermaid` warning + `md_mermaid_stub(src)` block.
+/// Stub impl: returns `UnsupportedDiagramType` for every input. Kept
+/// as a test seam — emitter unit tests use this so they exercise the
+/// "mermaid render failed → warning + placeholder" branch without
+/// pulling the real `crate::mermaid` machinery into the test binary.
+/// Production code uses [`RealMermaidDispatcher`] (constructed in
+/// `pipeline::render`).
 pub struct StubMermaidDispatcher;
 
 impl MermaidDispatcher for StubMermaidDispatcher {
     fn render(&mut self, _src: &str) -> Result<MermaidRendered, MermaidDispatchError> {
         Err(MermaidDispatchError::UnsupportedDiagramType)
     }
+}
+
+/// Real dispatcher (W-ddc4e7). Routes fenced-`mermaid` source through
+/// the in-tree `crate::mermaid::render` entry point, which:
+/// - sniffs the first non-blank line for a diagram-type keyword;
+/// - dispatches `flowchart`/`graph` to `crate::mermaid::flowchart` and
+///   `sequenceDiagram` to `crate::mermaid::sequence`;
+/// - returns `MermaidError::UnsupportedDiagramType` for the §E
+///   deferred set (gantt, classDiagram, stateDiagram[-v2], erDiagram,
+///   pie, journey, gitGraph, mindmap, timeline, quadrantChart,
+///   requirementDiagram, C4Context, sankey-beta, xychart-beta,
+///   block-beta);
+/// - returns `MermaidError::UnknownDiagramType` for every other
+///   leading token.
+///
+/// Successful renders produce SVG bytes that already carry an explicit
+/// `width="<px>" height="<px>" viewBox="..."` on the root `<svg>`. The
+/// dispatcher parses those attributes and converts pixels→points
+/// (1 CSS px = 0.75 pt) so `md_image_bytes` gets a concrete length;
+/// height is left `None` so the helper preserves aspect from the
+/// width.
+pub struct RealMermaidDispatcher;
+
+impl MermaidDispatcher for RealMermaidDispatcher {
+    fn render(&mut self, src: &str) -> Result<MermaidRendered, MermaidDispatchError> {
+        match crate::mermaid::render(src) {
+            Ok(svg_bytes) => {
+                let width_pt = parse_svg_root_width_px(&svg_bytes)
+                    .map(|px| px * 0.75)
+                    .unwrap_or(360.0);
+                Ok(MermaidRendered {
+                    svg_bytes,
+                    width_pt,
+                    height_pt: None,
+                })
+            }
+            Err(e) => Err(MermaidDispatchError::Other(e.to_string())),
+        }
+    }
+}
+
+/// Parse `width="<digits>"` from the root `<svg ...>` element. Returns
+/// the pixel value as `f64` if found, else `None`. The mermaid
+/// sub-renderers (`flowchart::emit`, `sequence`, `svg_buf`) all emit
+/// the root `<svg>` as a single line with `width="..." height="..."
+/// viewBox="..."`, so a tiny manual scan is sufficient — no regex/XML
+/// parser dependency.
+fn parse_svg_root_width_px(bytes: &[u8]) -> Option<f64> {
+    let s = std::str::from_utf8(bytes).ok()?;
+    let svg_idx = s.find("<svg")?;
+    // Look only inside the root tag.
+    let tag_end = s[svg_idx..].find('>').map(|n| svg_idx + n)?;
+    let header = &s[svg_idx..tag_end];
+    let attr_idx = header.find("width=\"")?;
+    let after = &header[attr_idx + "width=\"".len()..];
+    let close = after.find('"')?;
+    after[..close].parse::<f64>().ok()
 }
 
 // -----------------------------------------------------------------------------

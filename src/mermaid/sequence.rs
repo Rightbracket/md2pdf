@@ -1742,7 +1742,10 @@ mod tests {
     fn rejects_par_block() {
         let err = parse("sequenceDiagram\npar branch one\nA->>B: hi\nend\n").unwrap_err();
         match err {
-            MermaidError::ParseError { reason: feature, .. } => assert_eq!(feature, "par"),
+            MermaidError::ParseError { reason, .. } => {
+                assert!(reason.contains("par"), "got {reason:?}");
+                assert!(reason.contains("unsupported"), "got {reason:?}");
+            }
             other => panic!("got {other:?}"),
         }
     }
@@ -1825,7 +1828,7 @@ mod tests {
             src.push_str(&format!("participant A{i}\n"));
         }
         let err = parse(&src).unwrap_err();
-        assert!(matches!(err, MermaidError::InputTooLarge { cap: "MAX_ACTORS", .. }));
+        assert!(matches!(err, MermaidError::InputTooLarge { cap: "actors", .. }));
     }
 
     #[test]
@@ -1835,7 +1838,7 @@ mod tests {
             src.push_str("A->>B: x\n");
         }
         let err = parse(&src).unwrap_err();
-        assert!(matches!(err, MermaidError::InputTooLarge { cap: "MAX_EVENTS", .. }));
+        assert!(matches!(err, MermaidError::InputTooLarge { cap: "events", .. }));
     }
 
     #[test]
@@ -1852,7 +1855,7 @@ mod tests {
         let src = format!("sequenceDiagram\n{big}\n");
         let err = parse(&src).unwrap_err();
         match err {
-            MermaidError::InputTooLarge { cap, .. } => assert_eq!(cap, "MAX_LINE_BYTES"),
+            MermaidError::InputTooLarge { cap, .. } => assert_eq!(cap, "line bytes"),
             other => panic!("got {other:?}"),
         }
     }
