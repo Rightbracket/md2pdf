@@ -14,7 +14,7 @@
 //! upcoming image-pipeline Work can elevate warnings without re-shaping
 //! `main.rs`.
 
-mod world;
+pub(crate) mod world;
 
 use std::path::Path;
 
