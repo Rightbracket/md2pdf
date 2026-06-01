@@ -1,110 +1,98 @@
-//! Scaffold rendering pipeline.
+//! md2pdf rendering pipeline.
 //!
-//! The full Markdown→Typst emitter, image pipeline, and mermaid sub-renderer
-//! land in subsequent Work items. This scaffold:
+//! Per W-58a2ba: the placeholder body that the v1 scaffold emitted is
+//! gone; this module now reads the user's Markdown, hands it to
+//! `emitter::emit_typst_body`, concatenates the body onto
+//! `theme::THEME`, and feeds the combined source to Typst via the
+//! hand-rolled `World` for compile + PDF export.
 //!
-//! 1. Validates the input file exists and is readable.
-//! 2. Reads the Markdown source (currently unused beyond surfacing the
-//!    filename in the placeholder PDF).
-//! 3. Compiles a tiny embedded Typst document referencing Twemoji Mozilla
-//!    so the bundled font is exercised end-to-end.
-//! 4. Writes the resulting PDF bytes next to the input.
+//! ## Composition order (per D-c3af71 §B "theme composition")
 //!
-//! The `--strict` flag is wired into the pipeline signature so the
-//! upcoming image-pipeline Work can elevate warnings without re-shaping
-//! `main.rs`.
+//! ```text
+//!   THEME (set rules + helpers, baked-in)
+//! + emitted body (Typst markup with helper invocations)
+//! ```
+//!
+//! ## Strict-mode plumbing
+//!
+//! `WarningCollector` is constructed here and threaded into both the
+//! image pipeline (via the `WarnSink` indirection — image pipeline
+//! still writes its own stderr lines, then we drain into the unified
+//! accumulator inside the emitter) and the emitter itself. After
+//! emission, if `req.strict` is set and the collector reports any
+//! warning, we return `Md2PdfError::StrictEscalation` *before* writing
+//! the PDF, per D-b53937 §3.
 
 pub(crate) mod world;
 
 use std::path::Path;
 
+use crate::emitter::{emit_typst_body, StubMermaidDispatcher};
 use crate::error::{Md2PdfError, Result};
+use crate::image_pipeline::{Pipeline, PipelineBuilder};
 use crate::pipeline::world::ScaffoldWorld;
+use crate::theme::THEME;
+use crate::warnings::WarningCollector;
 
 /// Inputs to a single render run.
 pub struct RenderRequest<'a> {
     pub input: &'a Path,
     pub output: &'a Path,
-    /// Per D-b53937: when true, image-load warnings (and other
-    /// warning-class behaviors named in §2 of that Decision) are
-    /// elevated to exit code 6 and no PDF is written. The scaffold has
-    /// no warning sources yet, so this flag is recorded but inert.
+    /// Per D-b53937 §3: when true, any recorded warning escalates to
+    /// exit code 6 and no PDF is written.
     pub strict: bool,
 }
 
-/// Run the (currently placeholder) render pipeline.
+/// Run the render pipeline end-to-end.
 pub fn render(req: &RenderRequest<'_>) -> Result<()> {
-    // 1. Input validation — exit 1 surface.
-    if !req.input.exists() {
+    // 1. Input validation — exit-code-1 surface.
+    if !req.input.exists() || !req.input.is_file() {
         return Err(Md2PdfError::InputNotFound {
             path: req.input.to_path_buf(),
         });
     }
-    if !req.input.is_file() {
-        return Err(Md2PdfError::InputNotFound {
-            path: req.input.to_path_buf(),
-        });
-    }
-    let _markdown_source =
-        std::fs::read_to_string(req.input).map_err(|source| Md2PdfError::InputRead {
-            path: req.input.to_path_buf(),
-            source,
-        })?;
+    let markdown = std::fs::read_to_string(req.input).map_err(|source| Md2PdfError::InputRead {
+        path: req.input.to_path_buf(),
+        source,
+    })?;
 
-    // 2. Strict mode — currently no warning sources to escalate. Once
-    // the image pipeline lands (separate Work), the warning accumulator
-    // hangs off the World / pipeline context and is checked here.
-    let _ = req.strict;
-
-    // 3. Build a Typst World with the bundled fonts and a placeholder
-    // document, then compile and export.
-    let display_name = req
+    // 2. Build the runtime collaborators.
+    let base_dir = req
         .input
-        .file_name()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "<unnamed>".to_string());
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let mut image_pipeline: Pipeline = PipelineBuilder::new(base_dir).build();
+    let mut mermaid = StubMermaidDispatcher;
+    let mut warnings = WarningCollector::new();
 
-    let typst_source = scaffold_document(&display_name);
+    // 3. Emit Typst body from the Markdown source.
+    let body = emit_typst_body(&markdown, &mut image_pipeline, &mut mermaid, &mut warnings)
+        .map_err(Md2PdfError::from)?;
+
+    // 4. Strict-mode gate. Per D-b53937 §3 we check before write so the
+    //    user gets a clean "no output" signal on warnings + --strict.
+    if req.strict && warnings.any() {
+        return Err(Md2PdfError::StrictEscalation {
+            count: warnings.count(),
+        });
+    }
+
+    // 5. Compose theme + body and compile.
+    let typst_source = format!("{}\n{}\n", THEME, body);
     let world = ScaffoldWorld::new(typst_source);
-
     let document = typst::compile(&world)
         .output
         .map_err(|errors| Md2PdfError::TypstCompile(format_diags(&errors)))?;
-
-    let pdf_options = typst_pdf::PdfOptions::default();
-    let pdf_bytes = typst_pdf::pdf(&document, &pdf_options)
+    let pdf_bytes = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
         .map_err(|errors| Md2PdfError::TypstCompile(format_diags(&errors)))?;
 
-    // 4. Write the PDF next to the input.
+    // 6. Write the PDF next to the input.
     std::fs::write(req.output, pdf_bytes).map_err(|source| Md2PdfError::PdfWrite {
         path: req.output.to_path_buf(),
         source,
     })?;
     Ok(())
-}
-
-/// Tiny Typst document that exercises the bundled Twemoji Mozilla font.
-/// The body deliberately includes a color emoji so a human inspecting
-/// the scaffold PDF can confirm the COLRv0 wiring is live.
-fn scaffold_document(input_name: &str) -> String {
-    // Escape backslashes and quotes for safe embedding inside a Typst
-    // string literal.
-    let escaped = input_name.replace('\\', "\\\\").replace('"', "\\\"");
-    format!(
-        r#"#set page(width: 8.5in, height: 11in, margin: 1in)
-#set text(size: 14pt)
-
-= md2pdf scaffold
-
-This is a placeholder PDF generated by the v1 scaffold (Work W-1bab5f).
-The Markdown→Typst emitter, image pipeline, and mermaid sub-renderer
-land in subsequent Work items.
-
-Input file: *{escaped}*
-
-Bundled emoji font (Twemoji Mozilla, COLRv0): 😀 🎉 ✨ 🚀
-"#
-    )
 }
 
 fn format_diags<C>(diags: &C) -> String

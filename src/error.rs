@@ -66,6 +66,15 @@ pub enum Md2PdfError {
     Internal(String),
 }
 
+impl From<crate::emitter::EmitError> for Md2PdfError {
+    fn from(e: crate::emitter::EmitError) -> Self {
+        match e {
+            crate::emitter::EmitError::MarkdownParse(s) => Md2PdfError::MarkdownParse(s),
+            crate::emitter::EmitError::Internal(s) => Md2PdfError::Internal(s),
+        }
+    }
+}
+
 impl Md2PdfError {
     pub fn exit_code(&self) -> ExitCode {
         match self {

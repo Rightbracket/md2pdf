@@ -53,6 +53,10 @@ url = "=2.5.4"
 [dev-dependencies]
 assert_cmd = "=2.2.2"
 tempfile = "=3.16.0"
+# Re-used in the emitter integration test (tests/emitter_smoke.rs) to
+# build a tiny valid 1×1 PNG fixture that Typst's strict decoder will
+# accept. Kept on the same pinned version as the production dep.
+image = { version = "=0.25.6", default-features = false, features = ["png"] }
 
 [profile.release]
 strip = true

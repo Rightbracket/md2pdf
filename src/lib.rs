@@ -4,9 +4,11 @@
 //! pipeline, and mermaid sub-renderer land in subsequent Work items.
 
 pub mod cli;
+pub mod emitter;
 pub mod error;
 pub mod image_pipeline;
 pub mod pipeline;
 pub mod theme;
+pub mod warnings;
 
 pub use error::{ExitCode, Md2PdfError};
