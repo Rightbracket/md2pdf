@@ -27,12 +27,22 @@
 #set par(leading: 0.65em, spacing: 1.0em)
 #set footnote(numbering: "1")
 
-#show heading.where(level: 1): set text(size: 22pt, weight: "bold")
-#show heading.where(level: 2): set text(size: 17pt, weight: "bold")
-#show heading.where(level: 3): set text(size: 14pt, weight: "bold")
-#show heading.where(level: 4): set text(size: 12pt, weight: "bold")
-#show heading.where(level: 5): set text(size: 11pt, weight: "bold")
-#show heading.where(level: 6): set text(size: 11pt, weight: "bold", style: "italic")
+// W-1b4905 / O-10564c §5 — proportional font scaling.
+//
+// `md2pdf_body_size` is injected as a `#let` preamble by `pipeline.rs`
+// before this theme is read. It is a `length` value in pt. All text
+// sizes downstream derive from this single binding so the user-facing
+// `--font-scale` flag drives body and headings together with their
+// historical relative ratios preserved (h1=22/11, h2=17/11, h3=14/11,
+// h4=12/11, h5=h6=11/11). At md2pdf_body_size=11pt the output is
+// arithmetically equivalent to the pre-flag absolute sizes.
+#set text(size: md2pdf_body_size)
+#show heading.where(level: 1): set text(size: md2pdf_body_size * (22/11), weight: "bold")
+#show heading.where(level: 2): set text(size: md2pdf_body_size * (17/11), weight: "bold")
+#show heading.where(level: 3): set text(size: md2pdf_body_size * (14/11), weight: "bold")
+#show heading.where(level: 4): set text(size: md2pdf_body_size * (12/11), weight: "bold")
+#show heading.where(level: 5): set text(size: md2pdf_body_size * (11/11), weight: "bold")
+#show heading.where(level: 6): set text(size: md2pdf_body_size * (11/11), weight: "bold", style: "italic")
 
 #show heading: it => {
   v(0.6em, weak: true)

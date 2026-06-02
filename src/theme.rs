@@ -106,7 +106,10 @@ A claim with a footnote.#md_footnote[Footnote body text.]
             png = png_literal,
         );
 
-        let full = format!("{}\n{}", THEME, body);
+        let full = format!(
+            "#let md2pdf_body_size = 11pt\n{}\n{}",
+            THEME, body
+        );
         let world = ScaffoldWorld::new(full);
         let result = typst::compile(&world).output;
         match result {
@@ -127,6 +130,52 @@ A claim with a footnote.#md_footnote[Footnote body text.]
                 let msgs: Vec<String> =
                     diags.iter().map(|d| d.message.to_string()).collect();
                 panic!("Typst compile failed:\n{}", msgs.join("\n"));
+            }
+        }
+    }
+
+    /// W-1b4905 / O-10564c §9 — theme must Typst-compile cleanly at
+    /// the absolute-form bounds (4pt and 200pt) and at the canonical
+    /// pre-flag body size (11pt). Guards the proportional-scaling
+    /// refactor against extreme-bound layout failures.
+    #[test]
+    fn theme_compiles_across_font_scale_bounds() {
+        use crate::pipeline::world::ScaffoldWorld;
+
+        let body = r#"
+= Heading 1
+== Heading 2
+=== Heading 3
+
+A paragraph at the configured body size.
+
+#md_inline_code("code") inline.
+
+#md_strike[strike text]
+"#;
+        for size_pt in [4.0_f64, 11.0, 16.5, 200.0] {
+            let full = format!(
+                "#let md2pdf_body_size = {}pt\n{}\n{}",
+                size_pt, THEME, body
+            );
+            let world = ScaffoldWorld::new(full);
+            let result = typst::compile::<typst::layout::PagedDocument>(&world).output;
+            match result {
+                Ok(doc) => {
+                    let pdf = typst_pdf::pdf(&doc, &typst_pdf::PdfOptions::default());
+                    assert!(
+                        pdf.is_ok(),
+                        "PDF export failed at body_size_pt={size_pt}"
+                    );
+                }
+                Err(diags) => {
+                    let msgs: Vec<String> =
+                        diags.iter().map(|d| d.message.to_string()).collect();
+                    panic!(
+                        "Typst compile failed at body_size_pt={size_pt}:\n{}",
+                        msgs.join("\n")
+                    );
+                }
             }
         }
     }

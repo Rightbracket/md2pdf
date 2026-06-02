@@ -19,6 +19,7 @@ fn main() -> ProcessExitCode {
         input: &cli.file,
         output: &output,
         strict: cli.strict,
+        body_size_pt: cli.font_scale.body_size_pt,
     };
 
     match render(&req) {

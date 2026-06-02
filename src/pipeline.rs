@@ -41,6 +41,31 @@ pub struct RenderRequest<'a> {
     /// Per D-b53937 §3: when true, any recorded warning escalates to
     /// exit code 6 and no PDF is written.
     pub strict: bool,
+    /// Body font size in points, derived from the `--font-scale` CLI
+    /// flag per O-10564c §5/§6. The three input shapes (multiplier,
+    /// percentage, absolute) all collapse to a single value here.
+    /// Default: 11.0 (canonical pre-flag body size, multiplier=1.0).
+    pub body_size_pt: f64,
+}
+
+/// Format a `f64` body-size in pt for Typst preamble injection. Uses
+/// Rust's `{}` Display, which produces a finite decimal Typst will
+/// accept and elides trailing-zero noise (e.g. 11.0 → "11", 16.5 →
+/// "16.5"). Per O-10564c §6.
+fn format_body_pt(v: f64) -> String {
+    format!("{}", v)
+}
+
+/// Compose the Typst source string with the font-scale preamble per
+/// O-10564c §6: a single `#let md2pdf_body_size = <N>pt` binding
+/// prepended before the THEME and the emitted body.
+pub(crate) fn compose_typst_source(body_size_pt: f64, body: &str) -> String {
+    format!(
+        "#let md2pdf_body_size = {}pt\n{}\n{}\n",
+        format_body_pt(body_size_pt),
+        THEME,
+        body
+    )
 }
 
 /// Run the render pipeline end-to-end.
@@ -74,7 +99,7 @@ pub fn render(req: &RenderRequest<'_>) -> Result<()> {
     //    `Warned<...>` and bridge into the unified collector under
     //    `WarningSource::TypstCompile` (D-c3af71 §D-3). Stderr line shape:
     //    `md2pdf: warn: typst-compile: <msg>`.
-    let typst_source = format!("{}\n{}\n", THEME, body);
+    let typst_source = compose_typst_source(req.body_size_pt, &body);
     let world = ScaffoldWorld::new(typst_source);
     let compiled = typst::compile::<typst::layout::PagedDocument>(&world);
     for diag in &compiled.warnings {
