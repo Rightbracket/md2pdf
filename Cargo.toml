@@ -58,6 +58,15 @@ tempfile = "=3.16.0"
 # accept. Kept on the same pinned version as the production dep.
 image = { version = "=0.25.6", default-features = false, features = ["png"] }
 
+[features]
+# `test-fixtures` exposes crate-internal helpers (e.g. `tiny_png_fixture`)
+# to integration tests under `tests/` that link against the library
+# without `cfg(test)` set. Empty by design: enabling it just flips the
+# gate on the helpers — no extra dependencies. Today no integration test
+# turns it on; the feature is declared so the `#[cfg(feature = ...)]`
+# gates compile cleanly without `unexpected_cfgs` warnings.
+test-fixtures = []
+
 [profile.release]
 strip = true
 lto = "thin"

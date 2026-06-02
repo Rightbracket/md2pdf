@@ -616,7 +616,7 @@ mod parse_impl {
         // the character immediately before is not '-' and the character
         // after is not '>' (for the no-arrowhead candidates) or '-'
         // (which would extend `--` further).
-        let mut start = 0;
+        let start = 0;
         while let Some(idx) = line[start..].find(arrow) {
             let abs = start + idx;
             let before = if abs == 0 {
@@ -633,10 +633,6 @@ mod parse_impl {
             let _ = before;
             let _ = after;
             return true;
-            #[allow(unreachable_code)]
-            {
-                start = abs + arrow.len();
-            }
         }
         false
     }
