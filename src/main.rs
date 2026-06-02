@@ -7,13 +7,25 @@ use std::process::ExitCode as ProcessExitCode;
 
 use clap::Parser;
 
-use md2pdf::cli::{derive_output_path, Cli};
+use md2pdf::cli::{derive_output_path, validate_out_path, Cli};
 use md2pdf::error::Md2PdfError;
 use md2pdf::pipeline::{render, RenderRequest};
 
 fn main() -> ProcessExitCode {
     let cli = Cli::parse();
-    let output = derive_output_path(&cli.file);
+
+    // Resolve the output path: explicit `--out` (validated) or the
+    // derived neighbor-of-input path (D-fb4ebb §3 default).
+    let output = match &cli.out {
+        Some(p) => {
+            if let Err(e) = validate_out_path(p) {
+                eprintln!("md2pdf: {}", error_message(&e));
+                return ProcessExitCode::from(e.exit_code().as_i32() as u8);
+            }
+            p.clone()
+        }
+        None => derive_output_path(&cli.file),
+    };
 
     let req = RenderRequest {
         input: &cli.file,

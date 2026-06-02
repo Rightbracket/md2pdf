@@ -174,6 +174,13 @@ pub struct Cli {
     )]
     pub font_scale: FontScale,
 
+    /// Explicit output PDF path. When omitted, the PDF is written next to
+    /// the input with the markdown extension stripped and `.pdf` appended
+    /// (per D-fb4ebb §3). The path is honored verbatim — no `.pdf` is
+    /// appended, no `~` expansion, no directory targets.
+    #[arg(long = "out", short = 'o', value_name = "PATH")]
+    pub out: Option<PathBuf>,
+
     /// Markdown input file. The output PDF is written next to it.
     #[arg(value_name = "FILE")]
     pub file: PathBuf,
@@ -198,6 +205,68 @@ pub fn derive_output_path(input: &Path) -> PathBuf {
         Some(p) if !p.as_os_str().is_empty() => p.join(new_basename),
         _ => PathBuf::from(new_basename),
     }
+}
+
+/// Pre-flight validation for an explicit `--out` path per Decision
+/// O-92f7a9 §"Validation".
+///
+/// Three checks are run **in order**:
+///
+/// 1. Trailing path-separator (`foo/`, or `foo\` on Windows) → reject.
+/// 2. Path exists and is a directory → reject.
+/// 3. Parent directory is named (i.e. not the implicit CWD case for a
+///    bare filename) and does not exist → reject.
+///
+/// Existing-file collisions are NOT checked: silent overwrite is the
+/// policy (Decision §Policy B). Permission / write-time failures
+/// surface later as [`Md2PdfError::PdfWrite`] from `std::fs::write`.
+pub fn validate_out_path(path: &Path) -> std::result::Result<(), crate::error::Md2PdfError> {
+    use crate::error::Md2PdfError;
+
+    let p_disp = path.display().to_string();
+
+    // 1. Trailing path-separator check. Use the raw string form; on
+    //    Windows the user's literal separator is also caught.
+    let s = path.to_string_lossy();
+    let ends_with_sep = s.ends_with('/') || (cfg!(windows) && s.ends_with('\\'));
+    if ends_with_sep {
+        return Err(Md2PdfError::OutPathInvalid {
+            path: path.to_path_buf(),
+            message: format!(
+                "--out path \"{}\" ends with a path separator; pass an explicit filename instead",
+                p_disp
+            ),
+        });
+    }
+
+    // 2. Existing directory rejected.
+    if path.is_dir() {
+        return Err(Md2PdfError::OutPathInvalid {
+            path: path.to_path_buf(),
+            message: format!(
+                "--out path \"{}\" is an existing directory; pass an explicit filename instead",
+                p_disp
+            ),
+        });
+    }
+
+    // 3. Parent directory existence. `path.parent()` returns `Some("")`
+    //    for a bare filename like `foo.pdf` — that's the implicit CWD
+    //    case and is fine. Only fail when parent is named-but-missing.
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            return Err(Md2PdfError::OutPathInvalid {
+                path: path.to_path_buf(),
+                message: format!(
+                    "parent directory \"{}\" does not exist for --out path \"{}\"",
+                    parent.display(),
+                    p_disp
+                ),
+            });
+        }
+    }
+
+    Ok(())
 }
 
 /// If `name` ends in a case-insensitive recognized Markdown extension,
@@ -535,5 +604,119 @@ mod tests {
             "unexpected error kind for -s: {:?}",
             err.kind()
         );
+    }
+
+    // -------- --out flag tests (W-0dc539, per O-92f7a9) --------
+
+    use crate::error::{ExitCode, Md2PdfError};
+
+    #[test]
+    fn cli_out_flag_default_is_none() {
+        let parsed = Cli::try_parse_from(["md2pdf", "foo.md"]).unwrap();
+        assert!(parsed.out.is_none(), "no --out should leave out=None");
+    }
+
+    #[test]
+    fn cli_out_flag_parses_long() {
+        let parsed = Cli::try_parse_from(["md2pdf", "--out", "custom.pdf", "foo.md"]).unwrap();
+        assert_eq!(parsed.out, Some(PathBuf::from("custom.pdf")));
+    }
+
+    #[test]
+    fn cli_out_flag_parses_short() {
+        let parsed = Cli::try_parse_from(["md2pdf", "-o", "custom.pdf", "foo.md"]).unwrap();
+        assert_eq!(parsed.out, Some(PathBuf::from("custom.pdf")));
+    }
+
+    #[test]
+    fn cli_out_flag_accepts_relative_and_absolute() {
+        let parsed = Cli::try_parse_from(["md2pdf", "--out", "foo.pdf", "in.md"]).unwrap();
+        assert_eq!(parsed.out, Some(PathBuf::from("foo.pdf")));
+        let parsed = Cli::try_parse_from(["md2pdf", "--out", "/tmp/foo.pdf", "in.md"]).unwrap();
+        assert_eq!(parsed.out, Some(PathBuf::from("/tmp/foo.pdf")));
+    }
+
+    #[test]
+    fn cli_out_flag_honors_extension_verbatim() {
+        // O-92f7a9 §Policy A: no .pdf appending. The path is what the user wrote.
+        let parsed = Cli::try_parse_from(["md2pdf", "--out", "foo.txt", "in.md"]).unwrap();
+        assert_eq!(parsed.out, Some(PathBuf::from("foo.txt")));
+        let parsed = Cli::try_parse_from(["md2pdf", "--out", "foo", "in.md"]).unwrap();
+        assert_eq!(parsed.out, Some(PathBuf::from("foo")));
+    }
+
+    #[test]
+    fn validate_out_path_rejects_trailing_slash() {
+        let err = validate_out_path(Path::new("foo/")).unwrap_err();
+        match err {
+            Md2PdfError::OutPathInvalid { message, .. } => {
+                assert!(
+                    message.contains("ends with a path separator"),
+                    "got: {message}"
+                );
+            }
+            other => panic!("expected OutPathInvalid, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_out_path_rejects_existing_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = validate_out_path(dir.path()).unwrap_err();
+        match err {
+            Md2PdfError::OutPathInvalid { message, .. } => {
+                assert!(
+                    message.contains("is an existing directory"),
+                    "got: {message}"
+                );
+            }
+            other => panic!("expected OutPathInvalid, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_out_path_rejects_missing_parent() {
+        let err = validate_out_path(Path::new("/this/does/not/exist/foo.pdf")).unwrap_err();
+        match err {
+            Md2PdfError::OutPathInvalid { message, .. } => {
+                assert!(
+                    message.contains("parent directory"),
+                    "got: {message}"
+                );
+                assert!(message.contains("does not exist"), "got: {message}");
+            }
+            other => panic!("expected OutPathInvalid, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_out_path_accepts_writable_target() {
+        // Bare filename: parent is "" → implicit CWD → accepted.
+        validate_out_path(Path::new("foo.pdf")).expect("bare filename should validate");
+
+        // File inside an existing directory.
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("custom.pdf");
+        validate_out_path(&target).expect("non-existent file in existing dir should validate");
+    }
+
+    #[test]
+    fn validate_out_path_accepts_existing_file_for_overwrite() {
+        // O-92f7a9 §Policy B: silent overwrite is the policy. An existing
+        // regular file at the target must pass pre-flight validation.
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("preexisting.pdf");
+        std::fs::write(&target, b"old contents").unwrap();
+        validate_out_path(&target)
+            .expect("existing regular file should pass validation (silent overwrite policy)");
+    }
+
+    #[test]
+    fn out_path_invalid_maps_to_pdfwrite_exit_code() {
+        let e = Md2PdfError::OutPathInvalid {
+            path: PathBuf::from("foo/"),
+            message: "x".into(),
+        };
+        assert_eq!(e.exit_code(), ExitCode::PdfWrite);
     }
 }

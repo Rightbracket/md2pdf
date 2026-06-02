@@ -59,6 +59,13 @@ pub enum Md2PdfError {
         source: std::io::Error,
     },
 
+    /// Pre-flight `--out` path validation failed (trailing separator,
+    /// existing-directory, or missing parent). Maps to [`ExitCode::PdfWrite`]
+    /// because it is an I/O-class failure — the write cannot succeed.
+    /// Per Decision O-92f7a9 §"Error model".
+    #[error("{message}")]
+    OutPathInvalid { path: PathBuf, message: String },
+
     #[error("--strict was set and {count} warning(s) were escalated to errors")]
     StrictEscalation { count: usize },
 
@@ -81,7 +88,7 @@ impl Md2PdfError {
             Self::InputNotFound { .. } | Self::InputRead { .. } => ExitCode::InputNotFound,
             Self::MarkdownParse(_) => ExitCode::MarkdownParse,
             Self::TypstCompile(_) => ExitCode::TypstCompile,
-            Self::PdfWrite { .. } => ExitCode::PdfWrite,
+            Self::PdfWrite { .. } | Self::OutPathInvalid { .. } => ExitCode::PdfWrite,
             Self::StrictEscalation { .. } => ExitCode::StrictEscalation,
             Self::Internal(_) => ExitCode::Internal,
         }
