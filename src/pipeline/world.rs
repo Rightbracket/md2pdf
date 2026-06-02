@@ -8,14 +8,11 @@
 //! Fonts embedded:
 //! - **Twemoji Mozilla** (COLRv0) — the Decision-mandated emoji font
 //!   per D-2058a7.
-//! - **Typst's built-in fallback fonts** — provided by `typst-library`'s
-//!   `default_library` defaults (text fonts come via the embedded
-//!   `Library`'s standard set).
-//!
-//! Body serif/sans/mono fonts are *deferred* to a subsequent Work
-//! (the design-engineer + emitter Work). The scaffold relies on
-//! Typst's default text rendering for the placeholder document; the
-//! *emoji* font is what this scaffold proves end-to-end.
+//! - **`typst-assets` default fonts** — New Computer Modern, DejaVu
+//!   Sans Mono, Linux Libertine, etc. Without these, Typst's text
+//!   shaper has no Latin coverage and every glyph falls back to
+//!   `.notdef`, producing a PDF whose content stream is effectively
+//!   blank (the regression W-6dcc4f fixed).
 
 use std::sync::OnceLock;
 
@@ -48,6 +45,22 @@ fn build_font_set() -> Vec<Font> {
         fonts.push(font);
         idx += 1;
     }
+
+    // Typst's bundled default fonts (New Computer Modern, DejaVu Sans
+    // Mono, Linux Libertine, ...). Each entry in `typst_assets::fonts()`
+    // is a `&'static [u8]` blob that may contain one or more faces; we
+    // walk indices the same way as Twemoji until `Font::new` returns
+    // `None`. The static slice is wrapped via `Bytes::new_static` to
+    // avoid per-face copies of multi-megabyte TTC blobs.
+    for blob in typst_assets::fonts() {
+        let bytes = Bytes::new(blob);
+        let mut idx = 0;
+        while let Some(font) = Font::new(bytes.clone(), idx) {
+            fonts.push(font);
+            idx += 1;
+        }
+    }
+
     fonts
 }
 
@@ -134,4 +147,63 @@ const _: () = {
 fn _reserved_for_future_caches() -> &'static OnceLock<()> {
     static CELL: OnceLock<()> = OnceLock::new();
     &CELL
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression lock for W-6dcc4f: the World must carry the
+    /// typst-assets default fonts in addition to Twemoji. If
+    /// `build_font_set()` is ever reduced back to Twemoji-only, the
+    /// FontBook will lose all Latin coverage and rendered PDFs come out
+    /// with an empty content stream. Twemoji.Mozilla.ttf contributes
+    /// exactly one face; typst-assets contributes many more. So the
+    /// scaffold World must always have strictly more than one face.
+    #[test]
+    fn font_set_includes_typst_assets_defaults() {
+        let fonts = build_font_set();
+        assert!(
+            fonts.len() > 1,
+            "build_font_set() returned {} face(s); expected Twemoji \
+             + typst-assets default fonts (regression: W-6dcc4f)",
+            fonts.len()
+        );
+
+        // Spot-check: at least one face must advertise a family name
+        // distinct from Twemoji's, proving the assets crate landed.
+        let families: std::collections::BTreeSet<String> = fonts
+            .iter()
+            .map(|f| f.info().family.to_string())
+            .collect();
+        assert!(
+            families.iter().any(|f| !f.eq_ignore_ascii_case("Twemoji Mozilla")),
+            "FontBook only contains Twemoji families: {:?}",
+            families
+        );
+    }
+
+    /// Behavioural regression lock: render a tiny "hello" doc through
+    /// the real Typst pipeline and assert the resulting PDF byte stream
+    /// is non-trivial — the empty-content-stream symptom that triggered
+    /// W-6dcc4f produced PDFs ~1KB; a working text shaper produces
+    /// substantially more.
+    #[test]
+    fn world_renders_text_to_nontrivial_pdf() {
+        let world = ScaffoldWorld::new(
+            "Hello world, this is a body-text smoke test.".to_string(),
+        );
+        let doc = typst::compile(&world)
+            .output
+            .expect("Typst compile failed");
+        let pdf = typst_pdf::pdf(&doc, &typst_pdf::PdfOptions::default())
+            .expect("PDF export failed");
+        assert!(pdf.starts_with(b"%PDF-"), "not a PDF");
+        assert!(
+            pdf.len() > 2000,
+            "PDF suspiciously small ({} bytes) — text shaper likely \
+             missing default fonts (regression: W-6dcc4f)",
+            pdf.len()
+        );
+    }
 }
