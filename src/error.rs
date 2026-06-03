@@ -59,6 +59,18 @@ pub enum Md2PdfError {
         source: std::io::Error,
     },
 
+    /// PNG write failure. Maps to the same `ExitCode::PdfWrite` (= 4) as
+    /// PDF write per Decision D-30e622 §7 — the binding exit-code table
+    /// (U-64e9ec) is preserved; this variant exists only so the
+    /// user-facing message reads "could not write output PNG …" instead
+    /// of "PDF …".
+    #[error("could not write output PNG {path}: {source}")]
+    PngWrite {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
     /// Pre-flight `--out` path validation failed (trailing separator,
     /// existing-directory, or missing parent). Maps to [`ExitCode::PdfWrite`]
     /// because it is an I/O-class failure — the write cannot succeed.
@@ -88,7 +100,7 @@ impl Md2PdfError {
             Self::InputNotFound { .. } | Self::InputRead { .. } => ExitCode::InputNotFound,
             Self::MarkdownParse(_) => ExitCode::MarkdownParse,
             Self::TypstCompile(_) => ExitCode::TypstCompile,
-            Self::PdfWrite { .. } | Self::OutPathInvalid { .. } => ExitCode::PdfWrite,
+            Self::PdfWrite { .. } | Self::PngWrite { .. } | Self::OutPathInvalid { .. } => ExitCode::PdfWrite,
             Self::StrictEscalation { .. } => ExitCode::StrictEscalation,
             Self::Internal(_) => ExitCode::Internal,
         }

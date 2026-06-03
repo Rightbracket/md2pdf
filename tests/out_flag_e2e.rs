@@ -216,12 +216,15 @@ fn no_out_flag_preserves_default_behavior() {
     assert_is_pdf(&expected);
 }
 
-// -- 8. --out honors extension verbatim --------------------------------
+// -- 8. --out strict-extension policy (U-b2bf02 supersedes O-92f7a9 §A) -
 
 #[test]
 fn out_flag_honors_extension_verbatim() {
-    // O-92f7a9 §Policy A: no `.pdf` appending. The user wrote `foo.txt`,
-    // we write to `foo.txt`. The bytes are still PDF.
+    // U-b2bf02 (Client-directed) supersedes the previous O-92f7a9
+    // §Policy A "no appending" stance: the trailing extension on
+    // `--out` is preserved only when it matches `--format`. Here
+    // `weird.txt` does not match `--format pdf` (the default), so the
+    // format extension is appended literally → `weird.txt.pdf`.
     let dir = TempDir::new().unwrap();
     let md = write_input(dir.path(), SIMPLE_DOC);
     let out_path = dir.path().join("weird.txt");
@@ -236,11 +239,18 @@ fn out_flag_honors_extension_verbatim() {
 
     let stderr = String::from_utf8_lossy(&cmd.stderr);
     assert_eq!(cmd.status.code(), Some(0), "stderr:\n{stderr}");
-    assert!(out_path.exists(), "expected output at literal path {out_path:?}");
-    assert_is_pdf(&out_path);
-    // No `.pdf`-appended sibling should exist.
+
+    let appended = dir.path().join("weird.txt.pdf");
     assert!(
-        !dir.path().join("weird.txt.pdf").exists(),
-        "no .pdf appending allowed (Policy A)"
+        appended.exists(),
+        "expected output at strict-extension-appended path {appended:?}"
+    );
+    assert_is_pdf(&appended);
+    // The original literal path must NOT exist — we don't write the
+    // PDF bytes there under U-b2bf02.
+    assert!(
+        !out_path.exists(),
+        "U-b2bf02: when --out extension does not match --format, \
+         the literal path is not used; got file at {out_path:?}"
     );
 }

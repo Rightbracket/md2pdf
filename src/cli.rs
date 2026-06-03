@@ -1,17 +1,25 @@
 //! CLI argument surface.
 //!
 //! Implements the locked v1 CLI per **D-fb4ebb §3** and the `--strict`
-//! follow-on **D-b53937**:
+//! follow-on **D-b53937**, extended for PNG output by **Decision D-30e622**
+//! (PNG via in-engine typst-render at the PagedDocument fork; the
+//! `--format` flag selecting `pdf|png`; the strict-extension policy on
+//! `--out` per U-b2bf02; the multi-page filename convention per U-915ef2).
 //!
 //! ```text
-//! md2pdf [--strict] <FILE>
+//! md2pdf [--strict] [--out PATH] [--font-scale N] [--format pdf|png] <FILE>
 //! ```
 //!
-//! Output-path derivation per **D-fb4ebb §3** worked-example table:
+//! Output-path derivation per **D-fb4ebb §3** worked-example table (PDF
+//! default) and **D-30e622 §5c** (PNG):
 //! - case-insensitive `.md` / `.markdown` / `.mdown` / `.mkd` / `.mkdn`
-//!   are stripped from the basename, then `.pdf` is appended.
-//! - any other (or absent) extension: `.pdf` is appended verbatim.
+//!   are stripped from the basename, then `.pdf` (or `.png` for PNG) is
+//!   appended.
+//! - any other (or absent) extension: format-extension is appended verbatim.
 //! - the output is placed in the same directory as the input.
+//! - When `--out` is provided, U-b2bf02's strict-extension policy
+//!   applies: the trailing extension is preserved only when it matches
+//!   `--format`; otherwise the format-extension is appended literally.
 
 use std::path::{Path, PathBuf};
 
@@ -149,12 +157,12 @@ fn check_absolute(pt: f64) -> Result<(), String> {
     }
 }
 
-/// `md2pdf [--strict] [--font-scale <SCALE>] <FILE>`
+/// `md2pdf [--strict] [--font-scale <SCALE>] [--out <PATH>] [--format pdf|png] <FILE>`
 #[derive(Debug, Parser)]
 #[command(
     name = "md2pdf",
     version,
-    about = "Render a Markdown file to a PDF next to it.",
+    about = "Render a Markdown file to a PDF or PNG next to it.",
     long_about = None,
 )]
 pub struct Cli {
@@ -174,16 +182,179 @@ pub struct Cli {
     )]
     pub font_scale: FontScale,
 
-    /// Explicit output PDF path. When omitted, the PDF is written next to
-    /// the input with the markdown extension stripped and `.pdf` appended
-    /// (per D-fb4ebb §3). The path is honored verbatim — no `.pdf` is
-    /// appended, no `~` expansion, no directory targets.
+    /// Explicit output path. When omitted, the output is written next to
+    /// the input with the markdown extension stripped and the
+    /// format-extension appended (per D-fb4ebb §3 / D-30e622 §5c).
+    /// Per U-b2bf02 strict-extension policy: the trailing extension on
+    /// `--out` is preserved only when it matches `--format`; otherwise
+    /// the format-extension is appended literally to the path-as-typed.
     #[arg(long = "out", short = 'o', value_name = "PATH")]
     pub out: Option<PathBuf>,
 
-    /// Markdown input file. The output PDF is written next to it.
+    /// Output format. Default `pdf` (preserves pre-flag CLI behavior —
+    /// invocations omitting `--format` are unaffected). Per U-b2bf02 the
+    /// flag is the source of truth for the format produced; the
+    /// `--out` extension is never sniffed.
+    #[arg(
+        long = "format",
+        value_enum,
+        default_value_t = OutputFormat::Pdf,
+        value_name = "FORMAT",
+    )]
+    pub format: OutputFormat,
+
+    /// Markdown input file. The output is written next to it.
     #[arg(value_name = "FILE")]
     pub file: PathBuf,
+}
+
+/// Output format selector (per U-b2bf02 / Decision D-30e622 §5a).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+#[clap(rename_all = "lower")]
+pub enum OutputFormat {
+    Pdf,
+    Png,
+}
+
+impl Default for OutputFormat {
+    fn default() -> Self {
+        OutputFormat::Pdf
+    }
+}
+
+impl OutputFormat {
+    /// Format extension (lowercase, no leading dot).
+    pub fn extension(self) -> &'static str {
+        match self {
+            OutputFormat::Pdf => "pdf",
+            OutputFormat::Png => "png",
+        }
+    }
+}
+
+/// Resolved output shape passed to the render pipeline. Per Decision
+/// D-30e622 §5b: PDF carries an exact write path; PNG carries a *stem*
+/// from which `<stem>-NN.png` page filenames are composed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OutputTarget {
+    /// Exact PDF write path.
+    Pdf { path: PathBuf },
+    /// PNG stem; per U-915ef2, page-numbered filenames are composed as
+    /// `<stem>-<dynamic-padded-N>.png` for each page in the document.
+    PngStem { stem: PathBuf },
+}
+
+impl OutputTarget {
+    /// Display label for diagnostic / log lines. For PDF this is the
+    /// exact write path; for PNG this is the stem with `-N.png` shape
+    /// hint.
+    pub fn display(&self) -> String {
+        match self {
+            OutputTarget::Pdf { path } => path.display().to_string(),
+            OutputTarget::PngStem { stem } => format!("{}-N.png", stem.display()),
+        }
+    }
+}
+
+/// Compose the resolved [`OutputTarget`] from the user-typed `--out`
+/// path (if any), the chosen `--format`, and the input file path. Per
+/// Decision D-30e622 §5c — the algorithm is: (1) derive the literal
+/// target by applying U-b2bf02's strict-extension rule, (2) fork on
+/// format to produce either a PDF write-path or a PNG stem.
+pub fn compose_output_target(
+    format: OutputFormat,
+    out: Option<&Path>,
+    input: &Path,
+) -> OutputTarget {
+    let format_ext = format.extension();
+
+    // Step 1 — literal target.
+    let literal: PathBuf = match out {
+        Some(p) => {
+            if extension_matches(p, format_ext) {
+                p.to_path_buf()
+            } else {
+                // Append `.<format_ext>` literally to the user-typed
+                // path. No stripping, no inference.
+                let mut s = p.as_os_str().to_os_string();
+                s.push(".");
+                s.push(format_ext);
+                PathBuf::from(s)
+            }
+        }
+        None => match format {
+            OutputFormat::Pdf => derive_output_path(input),
+            OutputFormat::Png => {
+                let stem = derive_default_stem(input);
+                let mut s = stem.into_os_string();
+                s.push(".png");
+                PathBuf::from(s)
+            }
+        },
+    };
+
+    // Step 2 — fork on format.
+    match format {
+        OutputFormat::Pdf => OutputTarget::Pdf { path: literal },
+        OutputFormat::Png => {
+            // The literal target ends in `.png` (case-insensitive) by
+            // construction in step 1: either the user typed it that way
+            // and we preserved it, or we appended ".png". Strip it to
+            // recover the stem.
+            let stem = strip_trailing_ext(&literal, "png").unwrap_or(literal);
+            OutputTarget::PngStem { stem }
+        }
+    }
+}
+
+/// True iff `path`'s final-component extension matches `ext`
+/// (case-insensitive ASCII compare, no leading dot in `ext`).
+fn extension_matches(path: &Path, ext: &str) -> bool {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some(e) => e.eq_ignore_ascii_case(ext),
+        None => false,
+    }
+}
+
+/// Strip the trailing `.<ext>` (case-insensitive) from `path`'s final
+/// component, returning a new PathBuf with the parent preserved.
+/// Returns `None` if the extension does not match or the resulting stem
+/// would be empty.
+fn strip_trailing_ext(path: &Path, ext: &str) -> Option<PathBuf> {
+    let file_name = path.file_name()?.to_string_lossy().into_owned();
+    let dot = file_name.rfind('.')?;
+    let actual_ext = &file_name[dot + 1..];
+    if !actual_ext.eq_ignore_ascii_case(ext) {
+        return None;
+    }
+    let stem_name = &file_name[..dot];
+    if stem_name.is_empty() {
+        return None;
+    }
+    let parent = path.parent();
+    Some(match parent {
+        Some(p) if !p.as_os_str().is_empty() => p.join(stem_name),
+        _ => PathBuf::from(stem_name),
+    })
+}
+
+/// Derive the PNG/raster *stem* from an input path. Mirrors
+/// [`derive_output_path`] but does NOT append the PDF extension — the
+/// caller (typically [`compose_output_target`]) appends the appropriate
+/// format extension. Per Decision D-30e622 §5c.
+pub fn derive_default_stem(input: &Path) -> PathBuf {
+    let parent = input.parent();
+    let file_name = input
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
+    let new_basename = strip_recognized_md_ext(&file_name).unwrap_or_else(|| file_name.clone());
+
+    match parent {
+        Some(p) if !p.as_os_str().is_empty() => p.join(new_basename),
+        _ => PathBuf::from(new_basename),
+    }
 }
 
 /// Derive the output PDF path from an input path per D-fb4ebb §3.
@@ -718,5 +889,133 @@ mod tests {
             message: "x".into(),
         };
         assert_eq!(e.exit_code(), ExitCode::PdfWrite);
+    }
+
+    // -------- --format flag tests (W-723d6e, per Decision D-30e622) -----
+
+    #[test]
+    fn cli_format_flag_default_is_pdf() {
+        let parsed = Cli::try_parse_from(["md2pdf", "foo.md"]).unwrap();
+        assert_eq!(parsed.format, OutputFormat::Pdf);
+    }
+
+    #[test]
+    fn cli_format_flag_parses_pdf_and_png() {
+        let parsed = Cli::try_parse_from(["md2pdf", "--format", "pdf", "foo.md"]).unwrap();
+        assert_eq!(parsed.format, OutputFormat::Pdf);
+        let parsed = Cli::try_parse_from(["md2pdf", "--format", "png", "foo.md"]).unwrap();
+        assert_eq!(parsed.format, OutputFormat::Png);
+    }
+
+    #[test]
+    fn cli_format_flag_rejects_other_values() {
+        // Per D-30e622 §5a: clap ValueEnum rejects anything that isn't
+        // pdf|png. The variant kind is InvalidValue (clap's usage error).
+        let err = Cli::try_parse_from(["md2pdf", "--format", "svg", "foo.md"]).unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::InvalidValue);
+        let err = Cli::try_parse_from(["md2pdf", "--format", "jpg", "foo.md"]).unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::InvalidValue);
+    }
+
+    #[test]
+    fn cli_format_flag_case_insensitive_via_value_enum() {
+        // clap's ValueEnum with rename_all="lower" rejects "PNG" — value
+        // labels are lowercase per the Decision. Confirm the strict-case
+        // posture.
+        let err = Cli::try_parse_from(["md2pdf", "--format", "PNG", "foo.md"]).unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::InvalidValue);
+    }
+
+    // -------- compose_output_target — U-b2bf02 strict-extension matrix --
+
+    /// The exhaustive worked-example table from Decision D-30e622 §5c.
+    /// Rows whose source is U-b2bf02 verbatim are flagged with the comment.
+    #[test]
+    fn compose_output_target_strict_extension_matrix() {
+        let cases: &[(OutputFormat, Option<&str>, &str, &str, OutputTargetTag, &str)] = &[
+            // (format, out, input, expected-target-stem-or-path, tag, label)
+            // Verbatim from U-b2bf02:
+            (OutputFormat::Pdf, Some("foo.png"), "in.md", "foo.png.pdf", OutputTargetTag::Pdf, "U-b2bf02 verbatim: --out foo.png + format pdf → foo.png.pdf"),
+            (OutputFormat::Png, Some("bar.pdf"), "in.md", "bar.pdf", OutputTargetTag::PngStem, "U-b2bf02 verbatim: --format png --out bar.pdf → stem bar.pdf"),
+            // Implied by U-b2bf02 (Decision §5c table):
+            (OutputFormat::Pdf, Some("foo.pdf"), "in.md", "foo.pdf", OutputTargetTag::Pdf, "extension matches → preserved"),
+            (OutputFormat::Png, Some("bar.png"), "in.md", "bar", OutputTargetTag::PngStem, "extension matches → stem bar"),
+            (OutputFormat::Pdf, Some("foo"), "in.md", "foo.pdf", OutputTargetTag::Pdf, "no extension → appended"),
+            (OutputFormat::Png, Some("foo"), "in.md", "foo", OutputTargetTag::PngStem, "no extension + png → stem foo"),
+            // No --out cases:
+            (OutputFormat::Pdf, None, "notes.md", "notes.pdf", OutputTargetTag::Pdf, "no --out, format pdf, .md input"),
+            (OutputFormat::Png, None, "notes.md", "notes", OutputTargetTag::PngStem, "no --out, format png, .md input"),
+            (OutputFormat::Png, None, "notes.txt", "notes.txt", OutputTargetTag::PngStem, "no --out, format png, .txt input → stem notes.txt"),
+        ];
+
+        for (format, out, input, expected, tag, label) in cases {
+            let out_path = out.map(Path::new);
+            let got = compose_output_target(*format, out_path, Path::new(input));
+            match (got, tag) {
+                (OutputTarget::Pdf { path }, OutputTargetTag::Pdf) => {
+                    assert_eq!(
+                        path,
+                        PathBuf::from(expected),
+                        "{label}: pdf path mismatch"
+                    );
+                }
+                (OutputTarget::PngStem { stem }, OutputTargetTag::PngStem) => {
+                    assert_eq!(
+                        stem,
+                        PathBuf::from(expected),
+                        "{label}: png stem mismatch"
+                    );
+                }
+                (other, _) => panic!("{label}: wrong variant: {other:?}"),
+            }
+        }
+    }
+
+    /// Tag used to discriminate `OutputTarget` variants in the test
+    /// table without needing patterns inside the data.
+    enum OutputTargetTag {
+        Pdf,
+        PngStem,
+    }
+
+    #[test]
+    fn compose_output_target_format_png_default_uses_input_neighbor() {
+        // Confirms the no-`--out` PNG default: stem = input neighbor with
+        // markdown extension stripped, then the literal-target step
+        // appends `.png` and step 2 strips it. Net result: stem = input
+        // neighbor (no extension) for `notes.md`.
+        let got = compose_output_target(OutputFormat::Png, None, Path::new("path/to/notes.md"));
+        match got {
+            OutputTarget::PngStem { stem } => {
+                assert_eq!(stem, PathBuf::from("path/to/notes"));
+            }
+            other => panic!("expected PngStem, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn derive_default_stem_table() {
+        // Mirrors derive_output_path_matches_decision_table but expects
+        // the bare stem (no .pdf, no .png).
+        let cases: &[(&str, &str)] = &[
+            ("foo.md", "foo"),
+            ("notes.markdown", "notes"),
+            ("README.MD", "README"),
+            ("README", "README"),
+            ("notes.txt", "notes.txt"),
+            ("doc.mdown", "doc"),
+            ("path/to/notes.md", "path/to/notes"),
+            ("doc.Markdown", "doc"),
+            (".md", ".md"),
+            (".env.md", ".env"),
+        ];
+        for (input, expected) in cases {
+            let got = derive_default_stem(Path::new(input));
+            assert_eq!(
+                got,
+                PathBuf::from(expected),
+                "derive_default_stem({input:?}) mismatch"
+            );
+        }
     }
 }

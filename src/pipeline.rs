@@ -1,12 +1,13 @@
 //! md2pdf rendering pipeline.
 //!
-//! Per W-58a2ba: the placeholder body that the v1 scaffold emitted is
-//! gone; this module now reads the user's Markdown, hands it to
-//! `emitter::emit_typst_body`, concatenates the body onto
-//! `theme::THEME`, and feeds the combined source to Typst via the
-//! hand-rolled `World` for compile + PDF export.
+//! Reads the user's Markdown, hands it to `emitter::emit_typst_body`,
+//! concatenates the body onto `theme::THEME`, and feeds the combined
+//! source to Typst via the hand-rolled `World` for compile + format
+//! export. The format dispatch (PDF vs PNG) lives at the
+//! `PagedDocument` boundary, *after* the strict-mode warning gate, per
+//! Decision **D-30e622** §3.
 //!
-//! ## Composition order (per D-c3af71 §B "theme composition")
+//! ## Composition order
 //!
 //! ```text
 //!   THEME (set rules + helpers, baked-in)
@@ -16,17 +17,34 @@
 //! ## Strict-mode plumbing
 //!
 //! `WarningCollector` is constructed here and threaded into both the
-//! image pipeline (via the `WarnSink` indirection — image pipeline
-//! still writes its own stderr lines, then we drain into the unified
-//! accumulator inside the emitter) and the emitter itself. After
-//! emission, if `req.strict` is set and the collector reports any
-//! warning, we return `Md2PdfError::StrictEscalation` *before* writing
-//! the PDF, per D-b53937 §3.
+//! image pipeline (via the `WarnSink` indirection) and the emitter.
+//! After emission and `typst::compile` (which contributes its own
+//! `Warned<...>` warnings into the unified collector under
+//! `WarningSource::TypstCompile`), if `req.strict` is set and the
+//! collector reports any warning, we emit the canonical summary line
+//! and return `Md2PdfError::StrictEscalation` *before* writing any
+//! output bytes (PDF or PNG). Per U-6173fb (`--strict` semantics) and
+//! D-30e622 §3 (gate placement is format-agnostic). All four
+//! `WarningSource` buckets per U-d302a0 fire identically across
+//! formats.
+//!
+//! ## Format dispatch
+//!
+//! After the strict gate, the pipeline forks on `req.format`:
+//! - `OutputFormat::Pdf` → `typst_pdf::pdf` + single `fs::write`.
+//! - `OutputFormat::Png` → `pipeline::png::render_pages` writes
+//!   `<stem>-<NN>.png` files per U-915ef2.
+//!
+//! Per Decision D-30e622 §"Conditions that would invalidate" no new
+//! `WarningSource` bucket is added for PNG-render-time issues; the
+//! existing four-bucket taxonomy stays closed for this Work.
 
 pub(crate) mod world;
+pub mod png;
 
 use std::path::Path;
 
+use crate::cli::{OutputFormat, OutputTarget};
 use crate::emitter::{emit_typst_body, RealMermaidDispatcher};
 use crate::error::{Md2PdfError, Result};
 use crate::image_pipeline::{Pipeline, PipelineBuilder};
@@ -37,14 +55,25 @@ use crate::warnings::{WarningCollector, WarningSource};
 /// Inputs to a single render run.
 pub struct RenderRequest<'a> {
     pub input: &'a Path,
-    pub output: &'a Path,
-    /// Per D-b53937 §3: when true, any recorded warning escalates to
-    /// exit code 6 and no PDF is written.
+    /// Resolved output target — exact PDF write path or PNG stem,
+    /// produced upstream by `cli::compose_output_target`. Per Decision
+    /// D-30e622 §5b: the pipeline never re-parses `--out`; the CLI
+    /// layer is the single source of truth for path resolution.
+    pub output: OutputTarget,
+    /// Output format selector. Redundant with the `OutputTarget`
+    /// variant by construction (the CLI layer composes them
+    /// consistently), but kept as a separate field per Decision
+    /// D-30e622 §3 so the dispatch in `render` reads as a `match` on
+    /// `format`. Defaults to `Pdf` per U-b2bf02.
+    pub format: OutputFormat,
+    /// Per U-6173fb: when true, any recorded warning escalates to
+    /// exit code 6 and no output (PDF or PNG) is written. The gate is
+    /// format-agnostic per Decision D-30e622 §3.
     pub strict: bool,
     /// Body font size in points, derived from the `--font-scale` CLI
-    /// flag per O-10564c §5/§6. The three input shapes (multiplier,
-    /// percentage, absolute) all collapse to a single value here.
-    /// Default: 11.0 (canonical pre-flag body size, multiplier=1.0).
+    /// flag. The three input shapes (multiplier, percentage, absolute)
+    /// all collapse to a single value here. Default: 11.0 (canonical
+    /// pre-flag body size, multiplier=1.0).
     pub body_size_pt: f64,
 }
 
@@ -123,14 +152,31 @@ pub fn render(req: &RenderRequest<'_>) -> Result<()> {
     let document = compiled
         .output
         .map_err(|errors| Md2PdfError::TypstCompile(format_diags(&errors)))?;
-    let pdf_bytes = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
-        .map_err(|errors| Md2PdfError::TypstCompile(format_diags(&errors)))?;
 
-    // 6. Write the PDF next to the input.
-    std::fs::write(req.output, pdf_bytes).map_err(|source| Md2PdfError::PdfWrite {
-        path: req.output.to_path_buf(),
-        source,
-    })?;
+    // 6. Format dispatch (D-30e622 §3): PDF takes the well-trodden
+    //    typst-pdf path; PNG forks into `pipeline::png::render_pages`
+    //    which composes per-page filenames per U-915ef2.
+    match (req.format, &req.output) {
+        (OutputFormat::Pdf, OutputTarget::Pdf { path }) => {
+            let pdf_bytes = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+                .map_err(|errors| Md2PdfError::TypstCompile(format_diags(&errors)))?;
+            std::fs::write(path, pdf_bytes).map_err(|source| Md2PdfError::PdfWrite {
+                path: path.clone(),
+                source,
+            })?;
+        }
+        (OutputFormat::Png, OutputTarget::PngStem { stem }) => {
+            png::render_pages(&document, stem)?;
+        }
+        // The CLI layer composes (format, OutputTarget) consistently;
+        // a mismatch here is an Internal invariant violation.
+        (fmt, target) => {
+            return Err(Md2PdfError::Internal(format!(
+                "format/target variant mismatch: format={:?} target={:?}",
+                fmt, target
+            )));
+        }
+    }
     Ok(())
 }
 

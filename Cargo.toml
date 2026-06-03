@@ -28,6 +28,21 @@ path = "src/lib.rs"
 clap = { version = "=4.5.20", features = ["derive"] }
 typst = "=0.14.2"
 typst-pdf = "=0.14.2"
+# In-engine PNG rasteriser. Same 0.14.2 version family as typst /
+# typst-pdf per U-e61b99 (exact-version pin) and U-7c65ac (no extra
+# transitive surface — typst-render's only deps are typst-library,
+# tiny-skia, and the typst sibling crates already in our graph). Selected
+# over an external pdftoppm path which would have violated U-6a598c
+# (self-contained binary). See Decision D-30e622 §1–2.
+typst-render = { version = "=0.14.2", default-features = false }
+# tiny-skia: PNG encoder for the Pixmap returned by typst-render.
+# Already in our transitive graph (pulled in by typst-render itself —
+# Cargo.lock line 2403, version 0.11.4); naming it as a direct dep
+# does NOT expand the supply-chain surface (U-7c65ac) and is required
+# only so we can call `Pixmap::encode_png()` to materialise PNG bytes
+# at the dispatch fork in `src/pipeline.rs`. Pinned exact per U-e61b99
+# to the same version typst-render-0.14.2 resolved against.
+tiny-skia = { version = "=0.11.4", default-features = false, features = ["std", "png-format"] }
 # Bundled default fonts (New Computer Modern, DejaVu Sans Mono, etc.) so
 # the World can actually shape body text. Without this, the World only
 # carries Twemoji (emoji-only) and every Latin glyph falls back to
