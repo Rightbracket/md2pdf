@@ -1,6 +1,6 @@
 # U-8b7e5c — CLI surface — four flags (--strict, --out, --font-scale, positional FILE)
 
-_Kind: **Understanding** · Exported 2026-06-03 02:16:08 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
+_Kind: **Understanding** · Exported 2026-06-03 03:11:38 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
 
 ---
 

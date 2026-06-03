@@ -1,6 +1,6 @@
 # U-e1eca8 — Single baked-in theme — one canonical look, future-permissive
 
-_Kind: **Understanding** · Exported 2026-06-03 02:16:08 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
+_Kind: **Understanding** · Exported 2026-06-03 03:11:38 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
 
 ---
 

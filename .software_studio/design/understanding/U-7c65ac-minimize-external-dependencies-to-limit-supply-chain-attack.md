@@ -1,6 +1,6 @@
 # U-7c65ac — Minimize external dependencies to limit supply-chain attack surface
 
-_Kind: **Understanding** · Exported 2026-06-03 02:16:08 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
+_Kind: **Understanding** · Exported 2026-06-03 03:11:38 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
 
 ---
 
