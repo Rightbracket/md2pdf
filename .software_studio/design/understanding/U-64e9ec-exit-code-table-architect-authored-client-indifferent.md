@@ -1,6 +1,6 @@
 # U-64e9ec — Exit-code table — Architect-authored, Client-indifferent
 
-_Kind: **Understanding** · Exported 2026-06-03 03:11:38 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
+_Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
 
 ---
 

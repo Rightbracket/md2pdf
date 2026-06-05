@@ -1,6 +1,6 @@
 # D-30e622 — PNG output via in-engine typst-render at the PagedDocument fork
 
-_Kind: **Decisions** · Exported 2026-06-03 03:11:38 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
+_Kind: **Decisions** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
 
 ---
 

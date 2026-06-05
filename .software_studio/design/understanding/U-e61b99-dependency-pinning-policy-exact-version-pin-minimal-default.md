@@ -1,6 +1,6 @@
 # U-e61b99 — Dependency pinning policy — exact-version pin + minimal default features
 
-_Kind: **Understanding** · Exported 2026-06-03 03:11:38 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
+_Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
 
 ---
 

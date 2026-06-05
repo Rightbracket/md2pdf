@@ -1,6 +1,6 @@
 # V-7e24cd — md2pdf — CLI tool to render Markdown files as PDF
 
-_Kind: **Vision** · Exported 2026-06-03 03:11:38 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
+_Kind: **Vision** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
 
 ---
 
