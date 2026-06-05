@@ -145,6 +145,37 @@ pub enum ResolvedImage {
     },
 }
 
+/// Like `ResolvedImage`, but emitted by `Pipeline::fetch_for_html` for
+/// HTML `<img>` references where CSS-derived width/height drives sizing
+/// (see D-875e4b §4). The pipeline does NOT compute `SizedDims` for
+/// these; the HTML-table Typst emitter passes the raw CSS lengths
+/// through to `md_image_bytes`.
+///
+/// `intrinsic_px` is exposed in case a future emitter needs it (e.g.
+/// to resolve `width: auto; height: <length>` proportionally without
+/// going through the existing `compute_size` routine). The current
+/// HTML emitter relies on Typst's `image()` to preserve aspect ratio
+/// when one of width/height is `auto`, so it does not consume
+/// `intrinsic_px` directly today.
+#[derive(Debug, Clone)]
+pub enum ResolvedHtmlImage {
+    /// Image successfully fetched + decoded.
+    Bytes {
+        format: EmbeddedFormat,
+        bytes: Vec<u8>,
+        /// Intrinsic pixel dimensions (decoded raster). `None` for
+        /// SVG (Typst handles aspect resolution).
+        intrinsic_px: Option<(u32, u32)>,
+    },
+    /// Fetch / decode failed. Pipeline already pushed the canonical
+    /// warning to stderr + `self.warnings`. Emitter renders a
+    /// `md_image_placeholder(display_text)` box.
+    Placeholder {
+        display_text: String,
+        reason: String,
+    },
+}
+
 /// Encoded format the pipeline hands off to the emitter. Typst's `image`
 /// element accepts encoded PNG/JPEG bytes directly, and resolves SVG via
 /// its bundled `resvg` ingestion path — no md2pdf-side rasterisation.
@@ -373,6 +404,43 @@ impl Pipeline {
                     display_text,
                     reason,
                     size,
+                }
+            }
+        }
+    }
+
+    /// Fetch + decode for an HTML `<img>` reference. Unlike
+    /// [`Pipeline::resolve`], this does NOT compute `SizedDims` — the
+    /// HTML-table emit path (D-875e4b §4) drives sizing through CSS
+    /// `width` / `height` lengths emitted directly into Typst, and Typst's
+    /// `image()` resolves the auto-sided cases. Callers receive raw
+    /// bytes + intrinsic pixel dimensions and pass through to
+    /// `md_image_bytes(...)`.
+    ///
+    /// Failures share the same warning channel as `resolve`: stderr line
+    /// + `self.warnings` push. Caller renders a placeholder.
+    pub fn fetch_for_html(&mut self, req: &ImageRequest) -> ResolvedHtmlImage {
+        match self.dispatch_and_load(req) {
+            Ok(loaded) => ResolvedHtmlImage::Bytes {
+                format: loaded.format,
+                bytes: loaded.bytes,
+                intrinsic_px: loaded.intrinsic_px,
+            },
+            Err(reason) => {
+                let warning = ImageWarning {
+                    src: req.src.to_string(),
+                    reason: reason.clone(),
+                };
+                self.warn_sink.write_line(&warning.render_stderr_line());
+                self.warnings.push(warning);
+                let display_text = if !req.alt.is_empty() {
+                    req.alt.to_string()
+                } else {
+                    truncate_for_display(req.src, 80)
+                };
+                ResolvedHtmlImage::Placeholder {
+                    display_text,
+                    reason,
                 }
             }
         }

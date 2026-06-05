@@ -236,3 +236,37 @@ the left image takes 50%, a centre text column takes the remaining
     </td>
   </tr>
 </table>
+
+## HTML Extensions
+
+`md2pdf` recognizes a small subset of inline and block HTML for
+documents that need richer layout than CommonMark provides:
+
+- **Pagebreak directive** — an HTML comment `<!-- pagebreak -->` at the
+  top level inserts a hard page break. Recognized payload variants:
+  `pagebreak`, `page-break`, `page break`, `pageBreak`, case-insensitive,
+  with leading/trailing whitespace tolerated. Rejected variants
+  (`pagebreaks`, `pageb reak`, anything else) fall through as a literal
+  HTML comment.
+- **HTML tables** — `<table>` / `<thead>` / `<tbody>` / `<tr>` /
+  `<td>` / `<th>` blocks render as Typst tables. Supported CSS in the
+  `style` attribute: `width`, `height`, `padding`, `vertical-align`,
+  `text-align`, `border-collapse`, `border`, `background-color`. Color
+  values: 16 CSS Level 1 named colors plus 3-digit and 6-digit hex.
+  Supported attributes: `colspan`, `rowspan`, `align`, `valign`. The
+  `<img>` tag is honored *inside* table cells (routed through the
+  same image pipeline as Markdown images, with cell-relative percent
+  sizing).
+- **Recognized inline HTML (anywhere, not just in tables)** — `<b>`,
+  `<strong>`, `<i>`, `<em>`, `<br>`. Attributes are tolerated and
+  ignored (e.g. `<b class="foo">` still classifies as a recognized
+  bold open). Mismatched closes and unrecognized tags fall through to
+  literal display.
+
+Anything outside this subset falls through as raw text — no scope
+creep into a general HTML / CSS engine. Unreachable image URLs and
+malformed tables emit warnings (and escalate under `--strict`).
+
+For exhaustive examples and the full recognized-element matrix, see
+the fixtures under `tests/fixtures/qa_html_*.md`.
+

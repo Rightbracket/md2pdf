@@ -36,6 +36,11 @@ use pulldown_cmark::{
     Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd,
 };
 
+use crate::html::inline::{
+    try_classify_inline_html, InlineHtmlKind, RecognizedInlineFormatter,
+};
+use crate::html::parser::{try_parse_html_table, ParseOutcome};
+use crate::html::typst_emit::emit_html_table_typst;
 use crate::image_pipeline::{
     EmbeddedFormat, ImageRequest, Pipeline, ResolvedImage,
 };
@@ -368,6 +373,29 @@ struct MarkdownEmitter<'a> {
     /// `&mut WarningCollector` into `Pipeline` itself — see the
     /// research-findings Outcome for rationale.
     image_warnings_drained: usize,
+    /// Pagebreak directives recognized but not yet flushed (W-pagebreak,
+    /// D-875e4b §1d, §2a, U-976c35). Each `<!-- pagebreak -->` /
+    /// `<!-- page-break -->` HTML comment at top level increments this
+    /// counter. The counter is flushed (emitted as N consecutive
+    /// `#pagebreak()` invocations) at the next real-content top-level
+    /// block emission, IFF `has_emitted_real_content` is true. At
+    /// document end (`finish()`), any unflushed counter is silently
+    /// dropped — this is the "trailing pagebreak suppressed" semantics
+    /// from U-976c35.
+    pending_pagebreaks: u32,
+    /// Has any real-content top-level block been emitted yet? Gate for
+    /// leading-pagebreak suppression (U-976c35 "at the very start: no-op").
+    /// Set to true on the first call to `flush_pending_pagebreaks` (i.e.
+    /// at the first real-content top-level block emission).
+    has_emitted_real_content: bool,
+    /// Stack of recognized inline-HTML formatters open in the current
+    /// inline-content stream (D-875e4b §2h v2). Pushed when an
+    /// `Event::InlineHtml` classifies as `OpenTag(Bold|Italic)`; popped
+    /// when a matching `CloseTag` arrives. Drained at block-frame ends
+    /// (Paragraph, Heading, Item, BlockQuote, TableCell) so unmatched
+    /// openers auto-close — matches the "paragraph-level pairing only"
+    /// rule (D-875e4b §2h.5).
+    inline_html_stack: Vec<RecognizedInlineFormatter>,
 }
 
 impl<'a> MarkdownEmitter<'a> {
@@ -386,10 +414,18 @@ impl<'a> MarkdownEmitter<'a> {
             warnings,
             footnotes,
             image_warnings_drained: drained,
+            pending_pagebreaks: 0,
+            has_emitted_real_content: false,
+            inline_html_stack: Vec::new(),
         }
     }
 
-    fn finish(self) -> String {
+    fn finish(mut self) -> String {
+        // W-650a51 (D-875e4b §2h.5): drain any inline-HTML openers
+        // still on the stack at end of document (defensive — block
+        // frames usually drain first, but text outside any frame is
+        // possible).
+        self.drain_inline_html_stack();
         self.out
     }
 
@@ -473,9 +509,18 @@ impl<'a> MarkdownEmitter<'a> {
                 );
                 if in_html_block {
                     self.write(s);
+                } else if is_pagebreak_comment(s) && self.stack.is_empty() {
+                    // W-pagebreak (D-875e4b §1c, §1d, §6c, U-976c35):
+                    // pulldown sometimes emits a standalone block-html
+                    // comment as a single Event::Html outside an
+                    // HtmlBlock frame. Same recognition rules apply at
+                    // the second site, with the same top-level
+                    // constraint. Inside any open frame, fall through
+                    // to the literal pass-through below.
+                    self.record_pagebreak();
                 } else {
                     // Stray block-html fragment — render as raw.
-                    self.write(&format!(
+                    self.write_block(&format!(
                         "#md_inline_html({})\n\n",
                         typst_string(s)
                     ));
@@ -483,7 +528,45 @@ impl<'a> MarkdownEmitter<'a> {
                 Ok(())
             }
             Event::InlineHtml(s) => {
-                self.write(&format!("#md_inline_html({})", typst_string(s)));
+                // W-650a51 (D-875e4b §2h v2 + U-ad8c6c v2): outside-cell
+                // inline-HTML recognition. Classify the tag against the
+                // 5-element subset (`<b>` `<strong>` `<i>` `<em>` `<br>`);
+                // unrecognized payloads fall through to the existing
+                // raw-pass-through. Pairing is paragraph-level only
+                // (§2h.5): `inline_html_stack` is drained at block-frame
+                // ends so unmatched openers auto-close gracefully.
+                match try_classify_inline_html(s) {
+                    InlineHtmlKind::OpenTag(formatter) => {
+                        self.inline_html_stack.push(formatter);
+                        self.write(formatter.typst_open());
+                    }
+                    InlineHtmlKind::CloseTag(formatter) => {
+                        // Per §6k: only pop when the top of the stack
+                        // matches the close-tag's formatter. Otherwise
+                        // (mismatched/dangling close) fall through to
+                        // raw-pass-through — the open marker stays
+                        // on the stack and will auto-close at the
+                        // block-frame drain.
+                        if self.inline_html_stack.last() == Some(&formatter) {
+                            self.inline_html_stack.pop();
+                            self.write(formatter.typst_close());
+                        } else {
+                            self.write(&format!(
+                                "#md_inline_html({})",
+                                typst_string(s)
+                            ));
+                        }
+                    }
+                    InlineHtmlKind::SelfClosingBr => {
+                        self.write("#md_hardbreak()");
+                    }
+                    InlineHtmlKind::Unrecognized => {
+                        self.write(&format!(
+                            "#md_inline_html({})",
+                            typst_string(s)
+                        ));
+                    }
+                }
                 Ok(())
             }
             Event::FootnoteReference(label) => {
@@ -622,6 +705,20 @@ impl<'a> MarkdownEmitter<'a> {
     }
 
     fn end(&mut self, _tag_end: &TagEnd) -> Result<(), EmitError> {
+        // W-650a51 (D-875e4b §2h.5): drain unmatched inline-HTML openers
+        // at block-frame boundaries so each paragraph stays balanced.
+        // Inline frames (Strong, Emphasis, Strikethrough, Link, Image,
+        // table-row containers) do NOT drain — the opener legitimately
+        // spans across them.
+        let kind_drains = self
+            .stack
+            .last()
+            .map(|f| frame_kind_drains_inline_html(&f.kind))
+            .unwrap_or(false);
+        if kind_drains {
+            self.drain_inline_html_stack();
+        }
+
         let frame = self.stack.pop().ok_or_else(|| {
             EmitError::Internal("unbalanced End event with empty stack".to_string())
         })?;
@@ -816,11 +913,61 @@ impl<'a> MarkdownEmitter<'a> {
             }
             FrameKind::HtmlBlock => {
                 let raw = body.trim();
-                if !raw.is_empty() {
-                    self.write_block(&format!(
-                        "#md_inline_html({})\n\n",
-                        typst_string(raw)
-                    ));
+                if raw.is_empty() {
+                    // unchanged: drop empty html block
+                } else if is_pagebreak_comment(raw) && self.stack.is_empty() {
+                    // W-pagebreak (D-875e4b §1c, §1d, §6c, U-976c35):
+                    // recognized pagebreak comment AT TOP LEVEL.
+                    // `self.stack.is_empty()` after the HtmlBlock pop
+                    // means there was no parent frame other than the
+                    // (now-popped) HtmlBlock; this is the
+                    // "top-level only" constraint per Decision §1c.
+                    // If recognition succeeded but parent context is
+                    // non-top-level (inside Item, BlockQuote, TableCell,
+                    // or any nested frame), control falls through to
+                    // the `md_inline_html` literal pass-through below
+                    // — no warning emitted (graceful per §6c).
+                    self.record_pagebreak();
+                } else {
+                    // W-650a51 (D-875e4b §1, §2): try to parse as an
+                    // HTML <table>. Three outcomes:
+                    //   - NotATable: fall through to existing
+                    //     `md_inline_html` raw pass-through silently.
+                    //   - Parsed(table): emit Typst via
+                    //     `emit_html_table_typst`. Drain any image
+                    //     warnings the emit pushed onto `self.pipeline`.
+                    //   - ParseFailed(reason): record an Emitter-bucket
+                    //     warning and fall through to raw pass-through
+                    //     so the offending HTML is still visible.
+                    match try_parse_html_table(raw) {
+                        ParseOutcome::NotATable => {
+                            self.write_block(&format!(
+                                "#md_inline_html({})\n\n",
+                                typst_string(raw)
+                            ));
+                        }
+                        ParseOutcome::Parsed(table) => {
+                            let typst_src = emit_html_table_typst(
+                                &table,
+                                self.pipeline,
+                            );
+                            self.drain_image_warnings();
+                            self.write_block(&format!("{}\n\n", typst_src));
+                        }
+                        ParseOutcome::ParseFailed(reason) => {
+                            self.warnings.warn(
+                                WarningSource::Emitter,
+                                format!(
+                                    "html table parse failed: {}",
+                                    reason
+                                ),
+                            );
+                            self.write_block(&format!(
+                                "#md_inline_html({})\n\n",
+                                typst_string(raw)
+                            ));
+                        }
+                    }
                 }
             }
         }
@@ -831,9 +978,122 @@ impl<'a> MarkdownEmitter<'a> {
     /// content collector (table cell, item, blockquote, etc.) we just
     /// route to the buf same as inline; the calling site already
     /// suffix-newlines for top-level emission.
+    ///
+    /// W-pagebreak (D-875e4b §1d, U-976c35): when we're about to emit a
+    /// real-content top-level block (stack is empty), first flush any
+    /// pending pagebreaks. Inside a child frame's buf, no flush — pagebreaks
+    /// only fire at top level and the stack will return to empty before
+    /// the next top-level block.
     fn write_block(&mut self, s: &str) {
+        if self.stack.is_empty() {
+            self.flush_pending_pagebreaks();
+        }
         self.write(s);
     }
+
+    /// Record a recognized pagebreak directive (`<!-- pagebreak -->` or
+    /// `<!-- page-break -->` at top level). Increments the pending
+    /// counter; the actual emit (or discard, for leading) happens at
+    /// the next call to `flush_pending_pagebreaks`. See Decision
+    /// D-875e4b §1d and U-976c35 for the leading/trailing/back-to-back
+    /// semantics.
+    fn record_pagebreak(&mut self) {
+        self.pending_pagebreaks = self.pending_pagebreaks.saturating_add(1);
+    }
+
+    /// Flush pending pagebreaks (D-875e4b §1d, U-976c35).
+    ///
+    /// Behavior matrix (see done_definition #4):
+    /// - **Leading** pagebreaks (no real content emitted yet,
+    ///   `has_emitted_real_content == false`): skip emit, set the flag,
+    ///   reset the counter. → leading pagebreaks discarded.
+    /// - **Mid-document** pagebreaks (`has_emitted_real_content == true`,
+    ///   `pending_pagebreaks > 0`): emit `pending_pagebreaks` literal
+    ///   `#pagebreak()` invocations, reset the counter. → preserves
+    ///   back-to-back-pagebreak semantics (each comment renders as one
+    ///   empty page between content).
+    /// - **Trailing** pagebreaks: this function is never called after
+    ///   the last real top-level block emission, so the counter is
+    ///   silently dropped at `finish()`. → trailing pagebreaks
+    ///   discarded.
+    /// - **Pagebreak as the only document content**: leading + trailing
+    ///   suppression both apply; the document is effectively empty (no
+    ///   `#pagebreak()` emitted).
+    ///
+    /// Always sets `has_emitted_real_content = true`: the very act of
+    /// calling this function from `write_block` at top level is the
+    /// signal that a real-content block is about to be emitted.
+    fn flush_pending_pagebreaks(&mut self) {
+        if self.has_emitted_real_content && self.pending_pagebreaks > 0 {
+            for _ in 0..self.pending_pagebreaks {
+                self.out.push_str("#pagebreak()\n\n");
+            }
+        }
+        self.pending_pagebreaks = 0;
+        self.has_emitted_real_content = true;
+    }
+
+    /// W-650a51 (D-875e4b §2h.5): pop every open inline-HTML formatter
+    /// from `inline_html_stack`, writing its close marker into the
+    /// current frame's buffer. Called at block-frame ends (Paragraph,
+    /// Heading, Item, BlockQuote, TableCell) and at `finish()` so any
+    /// unbalanced `<b>`/`<i>` openers auto-close — the document
+    /// remains compilable per "honest fail-soft" (§6k).
+    fn drain_inline_html_stack(&mut self) {
+        while let Some(f) = self.inline_html_stack.pop() {
+            let close = f.typst_close().to_string();
+            self.write(&close);
+        }
+    }
+}
+
+/// W-650a51 (D-875e4b §2h.5): does this frame's End act as a
+/// block-pairing boundary for inline-HTML formatters? `true` for the
+/// "block-ish" frames (Paragraph, Heading, Item, BlockQuote,
+/// TableCell). `false` for inline frames (Strong, Emphasis,
+/// Strikethrough, Link, Image), List/Table containers (their child
+/// ends already drained), CodeBlock/Mermaid/HtmlBlock (raw text only).
+fn frame_kind_drains_inline_html(kind: &FrameKind) -> bool {
+    matches!(
+        kind,
+        FrameKind::Paragraph
+            | FrameKind::Heading { .. }
+            | FrameKind::Item { .. }
+            | FrameKind::BlockQuote
+            | FrameKind::TableCell
+    )
+}
+
+// -----------------------------------------------------------------------------
+// Pagebreak directive recognition.
+// -----------------------------------------------------------------------------
+
+/// Does `raw` recognize as the pagebreak HTML-comment directive?
+///
+/// Per U-976c35 and D-875e4b §1a:
+///
+/// - The input must be a single HTML comment (`<!-- ... -->`), tolerant
+///   of leading/trailing whitespace **outside** the comment markers.
+/// - The payload (the content between `<!--` and `-->`) is trimmed of
+///   whitespace and ASCII-lower-cased.
+/// - The lowered payload must be **exactly** `pagebreak` or `page-break`.
+/// - Any payload-bearing form is rejected (e.g. `<!-- pagebreak: top -->`,
+///   `<!-- pagebreaks -->`, `<!-- TODO pagebreak here -->`,
+///   `<!-- pagebreak extra -->`). The recognition is strict-no-payload
+///   per U-976c35.
+///
+/// NOTE: lives in `src/emitter.rs` rather than `src/html/pagebreak.rs`
+/// per D-875e4b §1f — `src/html/` does not yet exist at the time of
+/// this Work landing. W-html-table will introduce `src/html/` and may
+/// move this helper.
+pub(crate) fn is_pagebreak_comment(raw: &str) -> bool {
+    let s = raw.trim();
+    if !(s.starts_with("<!--") && s.ends_with("-->") && s.len() >= 7) {
+        return false;
+    }
+    let inner = &s[4..s.len() - 3];
+    let lowered = inner.trim().to_ascii_lowercase();
+    lowered == "pagebreak" || lowered == "page-break"
 }
 
 // -----------------------------------------------------------------------------
@@ -1051,5 +1311,322 @@ mod tests {
     fn typst_bytes_literal_produces_compileable_form() {
         let s = typst_bytes_literal(&[1u8, 2, 3]);
         assert_eq!(s, "bytes((1,2,3,))");
+    }
+
+    // -------------------------------------------------------------------------
+    // W-pagebreak — tests for the pagebreak HTML-comment directive
+    // (D-875e4b §1a–§1d, §2a, §6c, §7a, U-976c35).
+    // -------------------------------------------------------------------------
+
+    // Helper-level: `is_pagebreak_comment` recognition rules.
+
+    #[test]
+    fn is_pagebreak_recognizes_canonical_form() {
+        assert!(is_pagebreak_comment("<!-- pagebreak -->"));
+    }
+
+    #[test]
+    fn is_pagebreak_recognizes_no_inner_whitespace() {
+        assert!(is_pagebreak_comment("<!--pagebreak-->"));
+    }
+
+    #[test]
+    fn is_pagebreak_recognizes_uppercase() {
+        assert!(is_pagebreak_comment("<!-- PAGEBREAK -->"));
+    }
+
+    #[test]
+    fn is_pagebreak_recognizes_hyphenated_form() {
+        assert!(is_pagebreak_comment("<!-- page-break -->"));
+    }
+
+    #[test]
+    fn is_pagebreak_recognizes_mixed_case_hyphenated() {
+        assert!(is_pagebreak_comment("<!-- Page-Break -->"));
+    }
+
+    #[test]
+    fn is_pagebreak_recognizes_extra_inner_whitespace() {
+        assert!(is_pagebreak_comment("<!--   pagebreak   -->"));
+    }
+
+    #[test]
+    fn is_pagebreak_recognizes_with_outer_whitespace() {
+        // Trim outside the comment is also tolerated (allows recognition
+        // when the buffer carries surrounding pulldown whitespace).
+        assert!(is_pagebreak_comment("  <!-- pagebreak -->  "));
+        assert!(is_pagebreak_comment("\n<!-- pagebreak -->\n"));
+    }
+
+    #[test]
+    fn is_pagebreak_rejects_payload_with_colon() {
+        // U-976c35 strict-no-payload contract.
+        assert!(!is_pagebreak_comment("<!-- pagebreak: top -->"));
+    }
+
+    #[test]
+    fn is_pagebreak_rejects_plural() {
+        assert!(!is_pagebreak_comment("<!-- pagebreaks -->"));
+    }
+
+    #[test]
+    fn is_pagebreak_rejects_extra_text_before() {
+        assert!(!is_pagebreak_comment("<!-- not a pagebreak -->"));
+    }
+
+    #[test]
+    fn is_pagebreak_rejects_extra_text_after() {
+        assert!(!is_pagebreak_comment("<!-- pagebreak extra -->"));
+    }
+
+    #[test]
+    fn is_pagebreak_rejects_plain_comment() {
+        assert!(!is_pagebreak_comment("<!-- comment -->"));
+    }
+
+    #[test]
+    fn is_pagebreak_rejects_empty_comment() {
+        assert!(!is_pagebreak_comment("<!---->"));
+        assert!(!is_pagebreak_comment("<!-- -->"));
+    }
+
+    #[test]
+    fn is_pagebreak_rejects_non_comment() {
+        assert!(!is_pagebreak_comment("pagebreak"));
+        assert!(!is_pagebreak_comment("<p>pagebreak</p>"));
+        assert!(!is_pagebreak_comment("<!-- pagebreak"));
+        assert!(!is_pagebreak_comment("pagebreak -->"));
+    }
+
+    #[test]
+    fn is_pagebreak_rejects_underscore_form() {
+        assert!(!is_pagebreak_comment("<!-- page_break -->"));
+    }
+
+    // End-to-end: pagebreak emission via the emitter.
+
+    #[test]
+    fn pagebreak_mid_document_emits_typst_pagebreak() {
+        let mut p = make_pipeline();
+        let mut m = StubMermaidDispatcher;
+        let mut w = make_warnings();
+        let md = "before\n\n<!-- pagebreak -->\n\nafter\n";
+        let out = emit_typst_body(md, &mut p, &mut m, &mut w).unwrap();
+        assert!(
+            out.contains("#pagebreak()"),
+            "expected #pagebreak() in output:\n{out}"
+        );
+        // Must NOT pass through as md_inline_html.
+        assert!(
+            !out.contains("md_inline_html(\"<!-- pagebreak -->\")"),
+            "pagebreak comment should not pass through as md_inline_html:\n{out}"
+        );
+    }
+
+    #[test]
+    fn pagebreak_recognizes_page_break_alias() {
+        let mut p = make_pipeline();
+        let mut m = StubMermaidDispatcher;
+        let mut w = make_warnings();
+        let md = "before\n\n<!-- page-break -->\n\nafter\n";
+        let out = emit_typst_body(md, &mut p, &mut m, &mut w).unwrap();
+        assert!(out.contains("#pagebreak()"), "got: {out}");
+    }
+
+    #[test]
+    fn pagebreak_at_document_start_is_suppressed() {
+        // U-976c35: "At the very start of the document: no-op."
+        let mut p = make_pipeline();
+        let mut m = StubMermaidDispatcher;
+        let mut w = make_warnings();
+        let md = "<!-- pagebreak -->\n\nfirst content\n";
+        let out = emit_typst_body(md, &mut p, &mut m, &mut w).unwrap();
+        assert!(
+            !out.contains("#pagebreak()"),
+            "leading pagebreak must be suppressed:\n{out}"
+        );
+    }
+
+    #[test]
+    fn pagebreak_at_document_end_is_suppressed() {
+        // U-976c35: "At the very end of the document: no-op."
+        let mut p = make_pipeline();
+        let mut m = StubMermaidDispatcher;
+        let mut w = make_warnings();
+        let md = "last content\n\n<!-- pagebreak -->\n";
+        let out = emit_typst_body(md, &mut p, &mut m, &mut w).unwrap();
+        assert!(
+            !out.contains("#pagebreak()"),
+            "trailing pagebreak must be suppressed:\n{out}"
+        );
+    }
+
+    #[test]
+    fn pagebreak_back_to_back_emits_two() {
+        // U-976c35: "Back-to-back: each directive inserts a page break;
+        // honor it literally rather than collapsing."
+        let mut p = make_pipeline();
+        let mut m = StubMermaidDispatcher;
+        let mut w = make_warnings();
+        let md =
+            "alpha\n\n<!-- pagebreak -->\n\n<!-- pagebreak -->\n\nbravo\n";
+        let out = emit_typst_body(md, &mut p, &mut m, &mut w).unwrap();
+        // Count #pagebreak() occurrences.
+        let count = out.matches("#pagebreak()").count();
+        assert_eq!(
+            count, 2,
+            "expected 2 #pagebreak() invocations, got {count}:\n{out}"
+        );
+    }
+
+    #[test]
+    fn pagebreak_only_document_is_empty() {
+        // Decision §6c edge case (4): pagebreak as the only content →
+        // leading + trailing both apply; effectively empty.
+        let mut p = make_pipeline();
+        let mut m = StubMermaidDispatcher;
+        let mut w = make_warnings();
+        let md = "<!-- pagebreak -->\n";
+        let out = emit_typst_body(md, &mut p, &mut m, &mut w).unwrap();
+        assert!(
+            !out.contains("#pagebreak()"),
+            "a pagebreak-only document should emit no #pagebreak():\n{out}"
+        );
+    }
+
+    #[test]
+    fn pagebreak_inside_blockquote_falls_through() {
+        // Decision §1c, §6c (edge case 2): pagebreak inside a
+        // blockquote is non-top-level → fall through to md_inline_html;
+        // no #pagebreak() emitted.
+        let mut p = make_pipeline();
+        let mut m = StubMermaidDispatcher;
+        let mut w = make_warnings();
+        // Use HTML-block-like form inside the quote so pulldown emits
+        // it as raw inline-html within the blockquote.
+        let md = "> quoted text\n>\n> <!-- pagebreak -->\n>\n> more quoted\n";
+        let out = emit_typst_body(md, &mut p, &mut m, &mut w).unwrap();
+        assert!(
+            !out.contains("#pagebreak()"),
+            "pagebreak inside blockquote must NOT emit #pagebreak():\n{out}"
+        );
+    }
+
+    #[test]
+    fn pagebreak_inside_fenced_code_block_is_text() {
+        // Decision §6c (edge case 1) / §6g: pagebreak inside fenced
+        // code is Event::Text, not Event::Html / HtmlBlock. Recognition
+        // never fires. Comment renders as code source.
+        let mut p = make_pipeline();
+        let mut m = StubMermaidDispatcher;
+        let mut w = make_warnings();
+        let md = "before\n\n```\n<!-- pagebreak -->\n```\n\nafter\n";
+        let out = emit_typst_body(md, &mut p, &mut m, &mut w).unwrap();
+        assert!(
+            !out.contains("#pagebreak()"),
+            "pagebreak inside code fence must NOT emit #pagebreak():\n{out}"
+        );
+        // The comment text must appear inside an md_codeblock(...) call.
+        assert!(
+            out.contains("md_codeblock"),
+            "expected md_codeblock in output:\n{out}"
+        );
+    }
+
+    #[test]
+    fn pagebreak_inside_list_item_falls_through() {
+        // Decision §1c: pagebreak inside a list item is non-top-level
+        // → falls through. Note: depending on pulldown's html-block
+        // discrimination, the comment may not even reach HtmlBlock
+        // recognition; the assertion is symmetric: NO #pagebreak()
+        // emitted from a non-top-level position.
+        let mut p = make_pipeline();
+        let mut m = StubMermaidDispatcher;
+        let mut w = make_warnings();
+        let md = "- item one\n\n  <!-- pagebreak -->\n\n- item two\n";
+        let out = emit_typst_body(md, &mut p, &mut m, &mut w).unwrap();
+        assert!(
+            !out.contains("#pagebreak()"),
+            "pagebreak inside list item must NOT emit #pagebreak():\n{out}"
+        );
+    }
+
+    #[test]
+    fn pagebreak_payload_form_falls_through_to_inline_html() {
+        // U-976c35 strict-no-payload: <!-- pagebreak: top --> is NOT
+        // recognized; renders as raw md_inline_html.
+        let mut p = make_pipeline();
+        let mut m = StubMermaidDispatcher;
+        let mut w = make_warnings();
+        let md = "before\n\n<!-- pagebreak: top -->\n\nafter\n";
+        let out = emit_typst_body(md, &mut p, &mut m, &mut w).unwrap();
+        assert!(
+            !out.contains("#pagebreak()"),
+            "payload-bearing pagebreak comment must NOT emit #pagebreak():\n{out}"
+        );
+        assert!(
+            out.contains("md_inline_html"),
+            "expected md_inline_html fallback for unrecognized comment:\n{out}"
+        );
+    }
+
+    #[test]
+    fn pagebreak_case_insensitive_uppercase() {
+        // U-976c35: matching is case-insensitive.
+        let mut p = make_pipeline();
+        let mut m = StubMermaidDispatcher;
+        let mut w = make_warnings();
+        let md = "alpha\n\n<!-- PAGEBREAK -->\n\nbeta\n";
+        let out = emit_typst_body(md, &mut p, &mut m, &mut w).unwrap();
+        assert!(
+            out.contains("#pagebreak()"),
+            "uppercase PAGEBREAK should be recognized:\n{out}"
+        );
+    }
+
+    #[test]
+    fn pagebreak_preserves_surrounding_content() {
+        // Ensure surrounding paragraphs are not damaged by the
+        // recognition path.
+        let mut p = make_pipeline();
+        let mut m = StubMermaidDispatcher;
+        let mut w = make_warnings();
+        let md = "alpha\n\n<!-- pagebreak -->\n\nbravo\n";
+        let out = emit_typst_body(md, &mut p, &mut m, &mut w).unwrap();
+        assert!(out.contains("alpha"), "missing alpha:\n{out}");
+        assert!(out.contains("bravo"), "missing bravo:\n{out}");
+        assert!(out.contains("#pagebreak()"), "missing pagebreak:\n{out}");
+        // Order: alpha BEFORE pagebreak BEFORE bravo.
+        let i_a = out.find("alpha").unwrap();
+        let i_p = out.find("#pagebreak()").unwrap();
+        let i_b = out.find("bravo").unwrap();
+        assert!(i_a < i_p && i_p < i_b, "wrong order:\n{out}");
+    }
+
+    #[test]
+    fn pagebreak_no_warning_emitted() {
+        // U-976c35: "Strict-mode interaction (U-6173fb): none expected."
+        // Pagebreak recognition never produces a warning.
+        let mut p = make_pipeline();
+        let mut m = StubMermaidDispatcher;
+        let mut w = make_warnings();
+        let md = "before\n\n<!-- pagebreak -->\n\nafter\n";
+        let _ = emit_typst_body(md, &mut p, &mut m, &mut w).unwrap();
+        assert_eq!(w.count(), 0, "pagebreak must not produce warnings");
+    }
+
+    #[test]
+    fn pagebreak_inside_blockquote_no_warning() {
+        // Decision §6c: graceful fall-through, no warning emitted.
+        let mut p = make_pipeline();
+        let mut m = StubMermaidDispatcher;
+        let mut w = make_warnings();
+        let md = "> quoted\n>\n> <!-- pagebreak -->\n";
+        let _ = emit_typst_body(md, &mut p, &mut m, &mut w).unwrap();
+        assert_eq!(
+            w.count(),
+            0,
+            "non-top-level pagebreak must not produce warnings"
+        );
     }
 }

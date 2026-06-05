@@ -36,6 +36,8 @@ mod tests {
             "md_footnote",
             "md_inline_code",
             "md_image_bytes",
+            // HTML extension added by W-650a51 (D-875e4b):
+            "md_html_table",
         ] {
             assert!(
                 THEME.contains(name),
@@ -73,7 +75,7 @@ mod tests {
         png_literal.push_str("))");
 
         let body = format!(
-            r#"
+            r##"
 = GFM helper sanity
 
 A paragraph with #md_inline_code("inline_code") inline.
@@ -102,7 +104,42 @@ A claim with a footnote.#md_footnote[Footnote body text.]
 
 #md_image_bytes({png}, "png", 12pt, none)
 #md_image_bytes({png}, "png", 12pt, 12pt)
-"#,
+
+== HTML table
+
+#md_html_table(
+  (auto, auto, auto),
+  (
+    (center + horizon, center + horizon, center + horizon),
+    (left + horizon, left + horizon, left + horizon),
+  ),
+  (
+    (5pt, 5pt, 5pt),
+    (5pt, 5pt, 5pt),
+  ),
+  (
+    (none, none, none),
+    (none, none, none),
+  ),
+  (thickness: 1pt, paint: rgb("#000000")),
+  (
+    [*A*], [*B*], [*C*],
+    [a], [b], [c],
+  ),
+)
+
+#md_html_table(
+  (auto, auto),
+  ((left + horizon, left + horizon), (left + horizon, left + horizon)),
+  ((5pt, 5pt), (5pt, 5pt)),
+  ((none, none), (none, none)),
+  none,
+  (
+    table.cell(colspan: 2, [spanning two cols]),
+    [a], [b],
+  ),
+)
+"##,
             png = png_literal,
         );
 

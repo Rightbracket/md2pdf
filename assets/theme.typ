@@ -18,6 +18,8 @@
 //   md_footnote(body)               → GFM footnote wrapper
 //   md_inline_code(s)               → inline code (soft fill, monospace)
 //   md_image_bytes(bytes, format, width_pt, height_opt_pt) → image from bytes
+//   md_html_table(columns, align_grid, inset_grid, fill_grid, stroke, cells)
+//                                   → HTML <table> with logical-grid layout
 
 #set page(
   paper: "us-letter",
@@ -185,4 +187,51 @@
   } else {
     image(bytes, format: format, width: width_pt)
   }
+}
+
+// --- HTML table extension (W-650a51, D-875e4b) --------------------------
+
+// md_html_table: render an HTML <table> with logical-grid layout.
+//
+//   `columns`     : tuple of column widths (lengths or `auto`).
+//   `align_grid`  : 2D array, indexed `[row][col]`, of Typst alignments
+//                   (e.g. `left + horizon`, `center + horizon`).
+//   `inset_grid`  : 2D array, indexed `[row][col]`, of inset values
+//                   (length or dict like `(top: 4pt, ...)`).
+//   `fill_grid`   : 2D array, indexed `[row][col]`, of fills (color or `none`).
+//   `stroke`      : table-level stroke (`stroke` value or `none`).
+//   `cells`       : flat sequence of cell contents in row-major
+//                   placement order. Each entry is either a content
+//                   block or a `table.cell(...)` for spanning cells.
+//
+// Per D-875e4b §2: alignments / insets / fills are pulled from the
+// per-cell grids via the table.align / table.inset / table.fill
+// closures; the spanning is handled inline by `table.cell(...)` in
+// `cells`. Empty inputs render an empty table (zero-row / zero-col)
+// safely.
+#let md_html_table(columns, align_grid, inset_grid, fill_grid, stroke, cells) = {
+  if columns.len() == 0 or cells.len() == 0 {
+    // Nothing meaningful to render.
+    return []
+  }
+  table(
+    columns: columns,
+    align: (col, row) => {
+      if row < align_grid.len() and col < align_grid.at(row).len() {
+        align_grid.at(row).at(col)
+      } else { left + horizon }
+    },
+    inset: (col, row) => {
+      if row < inset_grid.len() and col < inset_grid.at(row).len() {
+        inset_grid.at(row).at(col)
+      } else { 5pt }
+    },
+    fill: (col, row) => {
+      if row < fill_grid.len() and col < fill_grid.at(row).len() {
+        fill_grid.at(row).at(col)
+      } else { none }
+    },
+    stroke: stroke,
+    ..cells,
+  )
 }

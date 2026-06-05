@@ -6,6 +6,7 @@
 pub mod cli;
 pub mod emitter;
 pub mod error;
+pub mod html;
 pub mod image_pipeline;
 pub mod mermaid;
 pub mod pipeline;
