@@ -1,10 +1,21 @@
 # md2pdf
 
-Markdown → PDF/PNG CLI with bundled color-emoji rendering.
+Markdown → PDF/PNG CLI with bundled color-emoji rendering, inline
+image embedding (local **and** remote), and Mermaid diagrams — all
+hermetic, no headless browser, no system fonts required.
 
 md2pdf renders a Markdown file to either PDF or per-page PNGs through a
 hand-rolled `typst::World`, embedding the Twemoji Mozilla COLRv0 font so
 emoji rendering does not depend on the host system.
+
+This README also doubles as a **fixture document** — the
+[Showcase](#showcase) section at the bottom exercises every supported
+Markdown feature, so the file round-trips cleanly through the tool:
+
+```
+md2pdf README.md                 # → README.pdf
+md2pdf --format png README.md    # → README-1.png, README-2.png, …
+```
 
 ## Usage
 
@@ -68,8 +79,160 @@ per the supply-chain posture **U-7c65ac** / **U-e61b99** and add no
 new transitive surface beyond what was already present in the Typst
 crate family.
 
-## Bundled font
+## Bundled assets
 
-`assets/fonts/Twemoji.Mozilla.ttf` is the Mozilla-maintained COLRv0
-build of the Twitter emoji set. License: CC-BY 4.0 for the artwork.
-Source: https://github.com/mozilla/twemoji-colr (release v0.7.0).
+- `assets/fonts/Twemoji.Mozilla.ttf` — the Mozilla-maintained COLRv0
+  build of the Twitter emoji set. License: CC-BY 4.0 for the artwork.
+  Source: https://github.com/mozilla/twemoji-colr (release v0.7.0).
+- `assets/images/rolled-paper.png` — illustration by Round Icons, via
+  [Unsplash+](https://unsplash.com/illustrations/a-piece-of-paper-that-is-rolled-up-lN5a8yIp9UA).
+  Used as the fixture for the local-file image-embedding path.
+
+The remote illustration referenced under **Showcase › Image embedding
+› Remote URL** is *Workplace isometric vector illustration* by Getty
+Images, via
+[Unsplash+](https://unsplash.com/illustrations/workplace-isometric-vector-illustration-54su5_IDPHw).
+
+---
+
+## Showcase
+
+Everything below this point exists so the README itself exercises the
+full feature surface when rendered through md2pdf. Treat it as both a
+demo and a smoke-test fixture.
+
+### Inline formatting & emoji
+
+Bold (**like this**), italic (*like this*), `inline code`, and even
+GitHub-flavoured ~~strike-through~~ all survive the round-trip. Color
+emoji come from the bundled Twemoji COLRv0 font, so 🚀 🐙 🦀 ☕️ 🎯 🌈
+render identically on Linux, macOS, and Windows.
+
+### Lists
+
+1. Ordered lists.
+2. With **nested**
+   - bullet points,
+   - that keep going,
+     - to arbitrary depth, and
+     - across mixed numbering.
+3. Back to the top level.
+
+### Tables
+
+| Feature        | Status | Notes                                  |
+| -------------- | :----: | -------------------------------------- |
+| PDF output     |   ✅   | Default; deterministic                 |
+| PNG output     |   ✅   | One file per page, zero-padded         |
+| Color emoji    |   ✅   | Bundled Twemoji, no system fonts       |
+| Local images   |   ✅   | Relative to the input Markdown         |
+| Remote images  |   ✅   | `https://` fetched via ureq + rustls   |
+| Mermaid        |   ✅   | Flowcharts and sequence diagrams       |
+
+### Code blocks
+
+```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let md = std::fs::read_to_string("README.md")?;
+    let pdf = md2pdf::render_to_pdf(&md)?;
+    std::fs::write("README.pdf", pdf)?;
+    Ok(())
+}
+```
+
+### Blockquote
+
+> "The best documentation is a document you can actually compile."
+
+### Image embedding
+
+md2pdf resolves Markdown image references through a small pipeline
+that handles `http(s)://`, `file://`, and plain relative paths
+uniformly, then decodes PNG/JPEG (or passes SVG through) before handing
+the bytes to Typst. Both illustrations below come from
+[Unsplash+](https://unsplash.com/plus) — the first is bundled in this
+repo, the second is fetched live every time the document is rendered.
+
+Network failures or unsupported formats degrade gracefully into a
+labelled placeholder box and a `md2pdf: warn: image:` line on stderr —
+unless `--strict` is in effect, in which case the run aborts with exit
+code `6`.
+
+#### Local file (bundled under `assets/images/`)
+
+![A rolled-up piece of paper, by Round Icons via Unsplash+](assets/images/rolled-paper.png)
+
+The reference above is a plain relative path; md2pdf resolves it
+against the directory of the input Markdown file.
+
+#### Remote URL (fetched at render time)
+
+![Workplace isometric vector illustration, by Getty Images via Unsplash+](https://plus.unsplash.com/premium_vector-1711987474646-9491260b0395?q=80&w=670&fm=png&fit=crop)
+
+### Mermaid diagrams
+
+Fenced ```` ```mermaid ```` blocks are intercepted and rendered through
+md2pdf's in-process Mermaid sub-engine. No headless browser, no
+Node.js.
+
+#### Flowchart
+
+```mermaid
+flowchart LR
+    A[Markdown input] --> B{Block type?}
+    B -- prose --> C[Typst emitter]
+    B -- image --> D[Image pipeline]
+    B -- mermaid --> E[Mermaid engine]
+    C --> F[typst::World]
+    D --> F
+    E --> F
+    F --> G{--format?}
+    G -- pdf --> H[PDF bytes]
+    G -- png --> I[PNG pages]
+```
+
+#### Sequence
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant CLI as md2pdf
+    participant W as typst::World
+    participant FS as Filesystem
+    U->>CLI: md2pdf notes.md
+    CLI->>FS: read notes.md
+    CLI->>CLI: parse + emit Typst
+    CLI->>W: compile(body)
+    W-->>CLI: PDF / PNG bytes
+    CLI->>FS: write notes.pdf
+    CLI-->>U: exit 0
+```
+
+<!-- pagebreak -->
+
+### Side-by-side images (HTML table)
+
+The same two illustrations from the previous section, laid out in a
+single-row, three-column HTML table whose row fills the page width:
+the left image takes 50%, a centre text column takes the remaining
+20%, and the right image takes 30%.
+
+<table style="width: 100%; border-collapse: collapse;">
+  <tr>
+    <td style="width: 50%; padding: 0 4pt; vertical-align: middle;">
+      <img src="assets/images/rolled-paper.png"
+           alt="A rolled-up piece of paper, by Round Icons via Unsplash+"
+           style="width: 100%; height: auto;" />
+    </td>
+    <td style="width: 20%; padding: 0 8pt; vertical-align: middle; text-align: center;">
+      One scroll on the left, one workstation on the right, and a
+      narrow column of prose wedged in between to prove that mixed
+      image/text rows survive the trip through the renderer.
+    </td>
+    <td style="width: 30%; padding: 0 4pt; vertical-align: middle;">
+      <img src="https://plus.unsplash.com/premium_vector-1711987474646-9491260b0395?q=80&w=670&fm=png&fit=crop"
+           alt="Workplace isometric vector illustration, by Getty Images via Unsplash+"
+           style="width: 100%; height: auto;" />
+    </td>
+  </tr>
+</table>
