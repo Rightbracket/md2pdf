@@ -1,14 +1,17 @@
-# U-b4aa2e — Color emoji font — Twemoji today, swappable under self-contained-binary constraints
-
-_Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
-
 ---
-
-<a id="U-b4aa2e"></a>
-## U-b4aa2e — Color emoji font — Twemoji today, swappable under self-contained-binary constraints
-
-*Kind:* `understanding` · *Version:* 1 · *Updated:* 2026-06-03 01:33:11
-
+{
+  "id": "U-b4aa2e",
+  "kind": "understanding",
+  "title": "Color emoji font — Twemoji today, swappable under self-contained-binary constraints",
+  "version": 1,
+  "created_at": "2026-06-03 01:33:11",
+  "updated_at": "2026-06-03 01:33:11",
+  "attrs": {
+    "conversation_anchor": "client-turn-2026-06-03-twemoji"
+  },
+  "out_links": []
+}
+---
 **Client-confirmed by ratification.** Color emoji rendering is a Vision-level requirement (V-7e24cd). The current bundled font is **Twemoji** (Mozilla's COLRv0 build, `assets/fonts/Twemoji.Mozilla.ttf`, sourced from `mozilla/twemoji-colr` v0.7.0, CC-BY 4.0 attribution).
 
 ## Client posture on font choice
@@ -30,14 +33,3 @@ _Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBEL
 ## Embedding mechanism
 
 - `include_bytes!` of the .ttf into `src/pipeline/world.rs`, served through the hand-rolled `typst::World`. This pattern is the expected default for any future bundled-font addition (per U-<self-contained-binary>).
-
-**Attributes**
-
-```json
-{
-  "conversation_anchor": "client-turn-2026-06-03-twemoji"
-}
-```
-
----
-

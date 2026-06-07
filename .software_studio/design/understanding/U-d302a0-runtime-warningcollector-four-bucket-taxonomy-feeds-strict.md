@@ -1,14 +1,17 @@
-# U-d302a0 — Runtime WarningCollector — four-bucket taxonomy feeds --strict
-
-_Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
-
 ---
-
-<a id="U-d302a0"></a>
-## U-d302a0 — Runtime WarningCollector — four-bucket taxonomy feeds --strict
-
-*Kind:* `understanding` · *Version:* 1 · *Updated:* 2026-06-03 01:36:45
-
+{
+  "id": "U-d302a0",
+  "kind": "understanding",
+  "title": "Runtime WarningCollector — four-bucket taxonomy feeds --strict",
+  "version": 1,
+  "created_at": "2026-06-03 01:36:45",
+  "updated_at": "2026-06-03 01:36:45",
+  "attrs": {
+    "conversation_anchor": "client-turn-2026-06-03-warning-buckets-ratified"
+  },
+  "out_links": []
+}
+---
 **Client-ratified.** The runtime `WarningCollector` and its four-bucket taxonomy were initially flagged by the Client as a possibly misapplied response to a complaint about *compile-time* warnings. After clarification — the runtime collector exists to feed `--strict` mode (U-<strict>), not to silence cargo build warnings — the Client said: "Now knowing all the details, the bucket taxonomy makes sense."
 
 ## The taxonomy
@@ -35,14 +38,3 @@ They correspond to the **four producing subsystems** in the pipeline (see Archae
 
 - **Not about cargo build warnings.** Those are a separate concern; this collector does not interact with them. If the Client's original complaint about build-time `unused_mut`-style warnings has not been addressed in the codebase, that is a separate cleanup item the partnership should track independently.
 - The Client did not ask for that build-warning audit explicitly in this turn, but the topic surfaced. SE may want to post a small Reviewer or QA Work to spot-check current `cargo build` output for unaddressed compile warnings, separately from this Understanding.
-
-**Attributes**
-
-```json
-{
-  "conversation_anchor": "client-turn-2026-06-03-warning-buckets-ratified"
-}
-```
-
----
-

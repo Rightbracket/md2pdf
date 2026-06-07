@@ -1,14 +1,17 @@
-# U-915ef2 — Multi-page PNG filename convention — always page-numbered, dynamic padding
-
-_Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
-
 ---
-
-<a id="U-915ef2"></a>
-## U-915ef2 — Multi-page PNG filename convention — always page-numbered, dynamic padding
-
-*Kind:* `understanding` · *Version:* 1 · *Updated:* 2026-06-03 02:35:08
-
+{
+  "id": "U-915ef2",
+  "kind": "understanding",
+  "title": "Multi-page PNG filename convention — always page-numbered, dynamic padding",
+  "version": 1,
+  "created_at": "2026-06-03 02:35:08",
+  "updated_at": "2026-06-03 02:35:08",
+  "attrs": {
+    "conversation_anchor": "client-turn-2026-06-03-png-filename-convention"
+  },
+  "out_links": []
+}
+---
 **Client-directed.** PNG output filenames are **always** page-numbered, even when the document is a single page. Page-number padding is **dynamic** — the width is determined by the total page count of the rendered document, not a fixed constant.
 
 ## The convention
@@ -44,14 +47,3 @@ The page-numbered-always-and-dynamic-padding rule is a **deliberate UX choice th
 
 - The shape of the shared *stem* across pages (i.e. how `--out` and the default-output-path interact with the page-number suffix) — the Architect should specify, but the constraint from this Understanding is: whatever the stem is, page-number-and-extension are appended per the rule above.
 - PDF output is unaffected — PDF remains a single-file output regardless of page count.
-
-**Attributes**
-
-```json
-{
-  "conversation_anchor": "client-turn-2026-06-03-png-filename-convention"
-}
-```
-
----
-

@@ -1,14 +1,17 @@
-# U-64e9ec — Exit-code table — Architect-authored, Client-indifferent
-
-_Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
-
 ---
-
-<a id="U-64e9ec"></a>
-## U-64e9ec — Exit-code table — Architect-authored, Client-indifferent
-
-*Kind:* `understanding` · *Version:* 1 · *Updated:* 2026-06-03 01:28:20
-
+{
+  "id": "U-64e9ec",
+  "kind": "understanding",
+  "title": "Exit-code table — Architect-authored, Client-indifferent",
+  "version": 1,
+  "created_at": "2026-06-03 01:28:20",
+  "updated_at": "2026-06-03 01:28:20",
+  "attrs": {
+    "conversation_anchor": "client-turn-2026-06-03-exit-codes"
+  },
+  "out_links": []
+}
+---
 **Provenance.** The Client did not specify the exit-code table. It originated from an Architect Decision in a prior (now-lost) session. The Client did not ask for anything specific and is indifferent on the substance.
 
 ## The table as it appears in the artifact (`src/error.rs`)
@@ -28,14 +31,3 @@ _Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBEL
 ## What this Understanding does NOT cover
 
 - The exact mapping of each error variant to its numeric code — lift from `src/error.rs` if a Work needs it; not worth duplicating here.
-
-**Attributes**
-
-```json
-{
-  "conversation_anchor": "client-turn-2026-06-03-exit-codes"
-}
-```
-
----
-

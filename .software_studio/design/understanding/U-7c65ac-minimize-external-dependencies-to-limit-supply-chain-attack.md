@@ -1,14 +1,17 @@
-# U-7c65ac — Minimize external dependencies to limit supply-chain attack surface
-
-_Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
-
 ---
-
-<a id="U-7c65ac"></a>
-## U-7c65ac — Minimize external dependencies to limit supply-chain attack surface
-
-*Kind:* `understanding` · *Version:* 1 · *Updated:* 2026-06-03 01:28:03
-
+{
+  "id": "U-7c65ac",
+  "kind": "understanding",
+  "title": "Minimize external dependencies to limit supply-chain attack surface",
+  "version": 1,
+  "created_at": "2026-06-03 01:28:03",
+  "updated_at": "2026-06-03 01:28:03",
+  "attrs": {
+    "conversation_anchor": "client-turn-2026-06-03-supply-chain-posture"
+  },
+  "out_links": []
+}
+---
 **Client-stated, load-bearing posture.** The Client wants to keep a limited set of external dependencies to avoid supply-chain attack surface. This is upstream of several specific Decisions in the codebase and retro-explains the existing posture.
 
 ## What this implies in the artifact today
@@ -29,14 +32,3 @@ _Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBEL
 
 - `svg` crate declared in Cargo.toml but apparently unused (replaced by hand-rolled `svg_buf.rs`). Cleanup candidate.
 - `ecow` declared but no direct `use ecow::` found in src/ (may be transitive-but-declared). Worth confirming.
-
-**Attributes**
-
-```json
-{
-  "conversation_anchor": "client-turn-2026-06-03-supply-chain-posture"
-}
-```
-
----
-

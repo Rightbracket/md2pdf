@@ -1,14 +1,17 @@
-# U-954c6b — Image policy — local + remote required (Client); fetch caps Architect-chosen
-
-_Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
-
 ---
-
-<a id="U-954c6b"></a>
-## U-954c6b — Image policy — local + remote required (Client); fetch caps Architect-chosen
-
-*Kind:* `understanding` · *Version:* 1 · *Updated:* 2026-06-03 01:28:30
-
+{
+  "id": "U-954c6b",
+  "kind": "understanding",
+  "title": "Image policy — local + remote required (Client); fetch caps Architect-chosen",
+  "version": 1,
+  "created_at": "2026-06-03 01:28:30",
+  "updated_at": "2026-06-03 01:28:30",
+  "attrs": {
+    "conversation_anchor": "client-turn-2026-06-03-image-policy"
+  },
+  "out_links": []
+}
+---
 **Mixed authorship.** The Client stated the high-level requirement loosely; the Architect/agent filled in the policy details.
 
 ## Client-stated requirement
@@ -31,14 +34,3 @@ _Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBEL
 ## What this Understanding does NOT cover
 
 - The exact behavior of `--strict` when an image fetch fails — deferred.
-
-**Attributes**
-
-```json
-{
-  "conversation_anchor": "client-turn-2026-06-03-image-policy"
-}
-```
-
----
-

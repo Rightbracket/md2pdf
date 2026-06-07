@@ -1,14 +1,17 @@
-# U-6a598c — Self-contained binary — no external runtime dependencies
-
-_Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
-
 ---
-
-<a id="U-6a598c"></a>
-## U-6a598c — Self-contained binary — no external runtime dependencies
-
-*Kind:* `understanding` · *Version:* 1 · *Updated:* 2026-06-03 01:33:11
-
+{
+  "id": "U-6a598c",
+  "kind": "understanding",
+  "title": "Self-contained binary — no external runtime dependencies",
+  "version": 1,
+  "created_at": "2026-06-03 01:33:11",
+  "updated_at": "2026-06-03 01:33:11",
+  "attrs": {
+    "conversation_anchor": "client-turn-2026-06-03-self-contained-binary"
+  },
+  "out_links": []
+}
+---
 **Client-confirmed posture.** The md2pdf binary is meant to be fully shippable with no external runtime dependencies. A user should be able to download the binary, run it, and have it work — no separate font files, no JS runtime, no system libraries beyond what every modern OS ships, no Chromium.
 
 ## What this implies in the artifact today
@@ -30,14 +33,3 @@ _Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBEL
 - Anything that would require the user to install something extra (a font, a runtime, a config file in a known location, an external binary) is suspect. Default first option is to bundle / embed / vendor.
 - Acceptable exceptions: things the OS already provides (libc), things the user explicitly asks for at the CLI (input file, output path), and network resources fetched at runtime when the user supplies a URL (image fetch).
 - The Client did not explicitly request font embedding; they said "I'm happy that they are — it sounds like the previous builders did the right thing." Treat that as Client ratification of the embedding pattern as a whole.
-
-**Attributes**
-
-```json
-{
-  "conversation_anchor": "client-turn-2026-06-03-self-contained-binary"
-}
-```
-
----
-

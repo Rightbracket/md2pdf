@@ -1,14 +1,29 @@
-# D-30e622 — PNG output via in-engine typst-render at the PagedDocument fork
-
-_Kind: **Decisions** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
-
 ---
-
-<a id="D-30e622"></a>
-## D-30e622 — PNG output via in-engine typst-render at the PagedDocument fork
-
-*Kind:* `decision` · *Version:* 1 · *Updated:* 2026-06-03 02:41:16
-
+{
+  "id": "D-30e622",
+  "kind": "decision",
+  "title": "PNG output via in-engine typst-render at the PagedDocument fork",
+  "version": 1,
+  "created_at": "2026-06-03 02:41:16",
+  "updated_at": "2026-06-03 02:41:16",
+  "attrs": {
+    "produced_by_work": "W-402de2",
+    "serves": [
+      "V-7e24cd",
+      "U-b2bf02",
+      "U-915ef2",
+      "U-6173fb",
+      "U-d302a0",
+      "U-7c65ac",
+      "U-6a598c",
+      "U-e61b99",
+      "U-64e9ec",
+      "U-8b7e5c"
+    ]
+  },
+  "out_links": []
+}
+---
 ## Decision
 
 md2pdf adds PNG as a second output format via **in-engine rendering using `typst-render = "=0.14.2"`**, dispatched at the `PagedDocument` boundary in `src/pipeline.rs::render` *after* the strict-mode warning gate. PDF behavior is preserved unchanged. PNG output filenames follow the U-b2bf02 strict-extension rule (to derive the *stem*) composed with the U-915ef2 always-page-numbered, dynamic-zero-padding rule (to expand the stem into one-or-more output files). Format selection is via a new `--format pdf|png` CLI flag, defaulting to `pdf`.
@@ -300,26 +315,3 @@ Re-open this Decision (write a superseding one) if any of the following occur:
 3. Client raises a multi-format-per-invocation requirement, or a configurable-DPI requirement — both reshape the CLI and the pipeline-fork shape enough to warrant a new Decision rather than an extension of this one.
 4. SVG output is added to the Vision. The composition of the strict-extension rule with the page-numbering rule was designed for the two-format case; a third format may motivate a unified `OutputTarget` redesign.
 5. A future Understanding splits the strict-mode warning gate into per-format semantics. This Decision relies on U-6173fb's "format-agnostic" invariant — if that invariant is narrowed, the dispatch placement (after the gate, single-gate-shared-by-both-formats) needs revisiting.
-
-**Attributes**
-
-```json
-{
-  "produced_by_work": "W-402de2",
-  "serves": [
-    "V-7e24cd",
-    "U-b2bf02",
-    "U-915ef2",
-    "U-6173fb",
-    "U-d302a0",
-    "U-7c65ac",
-    "U-6a598c",
-    "U-e61b99",
-    "U-64e9ec",
-    "U-8b7e5c"
-  ]
-}
-```
-
----
-

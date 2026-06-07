@@ -1,14 +1,17 @@
-# U-45401b — Mermaid scope — flowchart + sequence diagram only
-
-_Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
-
 ---
-
-<a id="U-45401b"></a>
-## U-45401b — Mermaid scope — flowchart + sequence diagram only
-
-*Kind:* `understanding` · *Version:* 1 · *Updated:* 2026-06-03 01:28:30
-
+{
+  "id": "U-45401b",
+  "kind": "understanding",
+  "title": "Mermaid scope — flowchart + sequence diagram only",
+  "version": 1,
+  "created_at": "2026-06-03 01:28:30",
+  "updated_at": "2026-06-03 01:28:30",
+  "attrs": {
+    "conversation_anchor": "client-turn-2026-06-03-mermaid-scope"
+  },
+  "out_links": []
+}
+---
 **Client-confirmed scope.** The Client confirms that **flowchart** and **sequence diagram** are sufficient mermaid diagram types for md2pdf. No requirement to support additional mermaid types (gantt, classDiagram, stateDiagram, ER, etc.) at this time.
 
 ## What is built today
@@ -27,14 +30,3 @@ _Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBEL
 
 - Other mermaid diagram types. If a future request lands for one, it is a scope expansion that deserves its own Decision — not a drive-by addition.
 - Importing a mermaid-rendering crate or shelling to a JS renderer. Both are presumed-rejected under the supply-chain posture; explicit Decision required to revisit.
-
-**Attributes**
-
-```json
-{
-  "conversation_anchor": "client-turn-2026-06-03-mermaid-scope"
-}
-```
-
----
-

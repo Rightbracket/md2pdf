@@ -1,14 +1,17 @@
-# V-7e24cd — md2pdf — CLI tool to render Markdown files as PDF
-
-_Kind: **Vision** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
-
 ---
-
-<a id="V-7e24cd"></a>
-## V-7e24cd — md2pdf — CLI tool to render Markdown files as PDF
-
-*Kind:* `vision` · *Version:* 3 · *Updated:* 2026-06-03 02:34:54
-
+{
+  "id": "V-7e24cd",
+  "kind": "vision",
+  "title": "md2pdf — CLI tool to render Markdown files as PDF",
+  "version": 3,
+  "created_at": "2026-06-03 01:17:28",
+  "updated_at": "2026-06-03 02:34:54",
+  "attrs": {
+    "conversation_anchor": "client-turn-2026-06-03-vision-statement"
+  },
+  "out_links": []
+}
+---
 md2pdf is a CLI tool to render Markdown files into output documents. It is just a CLI tool — no specific use case outside its general utility.
 
 ## Initial requirements (Client-stated)
@@ -33,14 +36,3 @@ md2pdf is a CLI tool to render Markdown files into output documents. It is just 
 
 - Not a Pandoc replacement in scope; deliberately narrower.
 - No specific target user persona or workflow is privileged — local dev rendering, CI artifacts, etc. are all equally valid; the tool serves general utility.
-
-**Attributes**
-
-```json
-{
-  "conversation_anchor": "client-turn-2026-06-03-vision-statement"
-}
-```
-
----
-

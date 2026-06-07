@@ -1,8 +1,8 @@
 # Design — Index
 
-_Exported by `studio export design` on 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
+_Exported by `studio export design` on 2026-06-07 04:31:04 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
 
-_This is a **read-only snapshot** of live state nodes. The State graph in the project DB is the source of truth; this file will be regenerated on the next export._
+_This index is generated for human readers; **`studio import design` ignores it**. See `README.md` for the on-disk format and round-trip rules._
 
 ---
 

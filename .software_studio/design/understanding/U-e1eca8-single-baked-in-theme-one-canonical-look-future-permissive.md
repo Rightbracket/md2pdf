@@ -1,14 +1,17 @@
-# U-e1eca8 — Single baked-in theme — one canonical look, future-permissive
-
-_Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
-
 ---
-
-<a id="U-e1eca8"></a>
-## U-e1eca8 — Single baked-in theme — one canonical look, future-permissive
-
-*Kind:* `understanding` · *Version:* 1 · *Updated:* 2026-06-03 01:41:01
-
+{
+  "id": "U-e1eca8",
+  "kind": "understanding",
+  "title": "Single baked-in theme — one canonical look, future-permissive",
+  "version": 1,
+  "created_at": "2026-06-03 01:41:01",
+  "updated_at": "2026-06-03 01:41:01",
+  "attrs": {
+    "conversation_anchor": "client-turn-2026-06-03-theme"
+  },
+  "out_links": []
+}
+---
 **Provenance.** Not a specific Client choice. The single-theme posture landed because nobody asked for alternatives. The Client said: "Wasn't a specific choice. It is fine for now."
 
 ## What is built today
@@ -33,14 +36,3 @@ _Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBEL
 ## What this Understanding does NOT cover
 
 - The contents of `assets/theme.typ` itself — the helper-function contract between the emitter (`md_*` calls) and the theme is artifact-level and lives in the source. The Archaeologist's proposed trench #4 (theme + emitter helper-contract) would catalogue it if needed.
-
-**Attributes**
-
-```json
-{
-  "conversation_anchor": "client-turn-2026-06-03-theme"
-}
-```
-
----
-

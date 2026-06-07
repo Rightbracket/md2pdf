@@ -1,14 +1,17 @@
-# U-8cdc0d — PNG raster resolution — 144 DPI (PIXELS_PER_PT = 2.0) Client-ratified default
-
-_Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
-
 ---
-
-<a id="U-8cdc0d"></a>
-## U-8cdc0d — PNG raster resolution — 144 DPI (PIXELS_PER_PT = 2.0) Client-ratified default
-
-*Kind:* `understanding` · *Version:* 1 · *Updated:* 2026-06-03 03:08:05
-
+{
+  "id": "U-8cdc0d",
+  "kind": "understanding",
+  "title": "PNG raster resolution — 144 DPI (PIXELS_PER_PT = 2.0) Client-ratified default",
+  "version": 1,
+  "created_at": "2026-06-03 03:08:05",
+  "updated_at": "2026-06-03 03:08:05",
+  "attrs": {
+    "conversation_anchor": "client-turn-2026-06-03-png-dpi-ratified"
+  },
+  "out_links": []
+}
+---
 **Client-ratified.** When PNG output renders the `PagedDocument`, the per-page raster resolution is locked at `PIXELS_PER_PT = 2.0_f32`, equivalent to **144 DPI** (matching the Typst CLI's default). Defined as a module-level `const` in `src/pipeline/png.rs`; **not** a CLI flag at this time.
 
 ## Provenance
@@ -34,14 +37,3 @@ Without this Understanding, the 144 DPI choice would live only in D-30e622 and r
 - Code changes that touch `PIXELS_PER_PT` should require an explicit Decision — the constant is a Client-ratified default, not a tunable.
 - A `--dpi` proposal is a CLI surface change (touches U-8b7e5c) and a default-policy change (touches this Understanding); both Understandings should be referenced in any such Work.
 - A user asking "why is the PNG output blurry?" or "why is it so large?" before a `--dpi` flag exists is a real signal that demand may be surfacing; capture as Client utterance and consider Architect Work.
-
-**Attributes**
-
-```json
-{
-  "conversation_anchor": "client-turn-2026-06-03-png-dpi-ratified"
-}
-```
-
----
-

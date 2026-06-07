@@ -1,14 +1,17 @@
-# U-b2bf02 — Output format selection — --format flag, strict extension preservation
-
-_Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
-
 ---
-
-<a id="U-b2bf02"></a>
-## U-b2bf02 — Output format selection — --format flag, strict extension preservation
-
-*Kind:* `understanding` · *Version:* 2 · *Updated:* 2026-06-03 03:08:05
-
+{
+  "id": "U-b2bf02",
+  "kind": "understanding",
+  "title": "Output format selection — --format flag, strict extension preservation",
+  "version": 2,
+  "created_at": "2026-06-03 02:35:08",
+  "updated_at": "2026-06-03 03:08:05",
+  "attrs": {
+    "conversation_anchor": "client-turn-2026-06-03-format-flag"
+  },
+  "out_links": []
+}
+---
 **Client-directed.** Output format selection is via an explicit `--format` flag, not by sniffing the `--out` path's extension. The flag value is the source of truth for the format produced.
 
 ## The `--format` flag
@@ -53,14 +56,3 @@ Client-confirmed: `--strict` (U-6173fb) behaves identically regardless of format
 - Multi-page PNG filename convention itself — captured in U-915ef2.
 - The implementation approach (typst-render, dispatch point, etc.) — captured in D-30e622.
 - A future `--dpi` flag — explicitly out of scope; PNG output uses the Client-ratified default captured in U-<dpi>.
-
-**Attributes**
-
-```json
-{
-  "conversation_anchor": "client-turn-2026-06-03-format-flag"
-}
-```
-
----
-

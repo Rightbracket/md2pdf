@@ -1,14 +1,17 @@
-# U-6173fb — --strict mode — any warning becomes a hard failure
-
-_Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
-
 ---
-
-<a id="U-6173fb"></a>
-## U-6173fb — --strict mode — any warning becomes a hard failure
-
-*Kind:* `understanding` · *Version:* 1 · *Updated:* 2026-06-03 01:36:45
-
+{
+  "id": "U-6173fb",
+  "kind": "understanding",
+  "title": "--strict mode — any warning becomes a hard failure",
+  "version": 1,
+  "created_at": "2026-06-03 01:36:45",
+  "updated_at": "2026-06-03 01:36:45",
+  "attrs": {
+    "conversation_anchor": "client-turn-2026-06-03-strict-confirmed"
+  },
+  "out_links": []
+}
+---
 **Client-confirmed semantics.** When `--strict` is passed, **any warning surfaced during render becomes a hard failure**: no PDF is written, the canonical summary line is emitted, and the process exits with the `StrictEscalation` exit code. Without `--strict`, warnings are reported but the PDF is still produced.
 
 ## Scope of "any warning"
@@ -38,14 +41,3 @@ The strict check runs in `src/pipeline.rs` **after `typst::compile` but before `
 ## Tests
 
 - Network-touching strict-mode integration tests exist but are `#[ignore]`-gated (per Archaeologist trench W-b6497a). They run on demand, not in the default test pass.
-
-**Attributes**
-
-```json
-{
-  "conversation_anchor": "client-turn-2026-06-03-strict-confirmed"
-}
-```
-
----
-

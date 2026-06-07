@@ -1,14 +1,17 @@
-# U-8df478 — Image sizing rule — agent-authored, Client-unverified
-
-_Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBELISK/eshork/projects/md2pdf`._
-
 ---
-
-<a id="U-8df478"></a>
-## U-8df478 — Image sizing rule — agent-authored, Client-unverified
-
-*Kind:* `understanding` · *Version:* 1 · *Updated:* 2026-06-03 01:39:23
-
+{
+  "id": "U-8df478",
+  "kind": "understanding",
+  "title": "Image sizing rule — agent-authored, Client-unverified",
+  "version": 1,
+  "created_at": "2026-06-03 01:39:23",
+  "updated_at": "2026-06-03 01:39:23",
+  "attrs": {
+    "conversation_anchor": "client-turn-2026-06-03-image-sizing"
+  },
+  "out_links": []
+}
+---
 **Provenance.** The Client did not specify image sizing behavior. The current rule is entirely an agent's call from a prior (now-lost) session. The Client also stated: "I haven't gotten around to testing it yet, so I cannot comment on its current correctness."
 
 ## What is built today (artifact-level)
@@ -32,14 +35,3 @@ _Kind: **Understanding** · Exported 2026-06-05 20:35:19 UTC from `/Volumes/OBEL
 
 - The fetch policy (timeouts, redirects, size caps) is captured separately in U-954c6b (Image policy).
 - The decode-feature posture (PNG/JPEG only in `image`, no SVG features) is also in U-954c6b.
-
-**Attributes**
-
-```json
-{
-  "conversation_anchor": "client-turn-2026-06-03-image-sizing"
-}
-```
-
----
-
